@@ -1,0 +1,16 @@
+/*
+ * songs.css
+ *
+ * Copyright (C) 2019  Henri Lesourd
+ *
+ */
+
+.c0 { font-size: 3vw; background-color: #e0f0ff; border: 0px #808080 solid; }
+.c1 { font-family: "Arial"; border: 0px #a0a0a0 solid; }
+.c2 { /*background-color: #e0f0ff;*/ border: 2px #e0e0e0 solid; width: 35ex; }
+.c3 { /*background-color: #e0f0ff;*/ border: 2px #e0e0e0 solid; width: 20ex; }
+.c4 { width: 50ex;
+      background-color: #e0e0e0; border: solid #e0f0ff;
+      font-family: Arial; font-size: 3vw;
+    }
+.c5 { font-size: 2.6vw; }
