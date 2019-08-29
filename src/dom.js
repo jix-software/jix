@@ -35,7 +35,7 @@ var ELEMENT_NODE=1,
 
 var ERRO;
 var SymbolFrom=sy("<="),
-    DomElement=prototype(prototype(prototype(prototype(document.createElement("div"))))).constructor; // TODO: check that this is robust
+    DomElement;
     dom=type(function (O) {
                var DOM;
                if (isString(O)) DOM=document.createTextNode(O);
@@ -96,7 +96,11 @@ dom.setMethod("getv",function (NAME) { // FIXME: test that NAME is appropriate
   return this[NAME];
 });
 dom.setMethod("setv",function (NAME,VAL) {
-  if (isDomElement(this)) this.DOM.setAttribute(NAME,VAL);
+  if (isDomElement(this)) {
+    var DOIT=1;
+    if (NAME=="hidden") { if (!VAL || VAL=="0") DOIT=0; ERRL=[VAL,DOIT]; }
+    if (DOIT) this.DOM.setAttribute(NAME,VAL);
+  }
   this[NAME]=VAL;
 });
 
@@ -169,8 +173,15 @@ setprop(dom,"propagate",function (EVT) {
     }
   }
 });
-document.addEventListener("keyup",dom.propagate,false);
-document.addEventListener("keydown",dom.propagate,false);
-document.addEventListener("keypress",dom.propagate,false);
-document.addEventListener("click",dom.propagate,false);
-//document.addEventListener("mousemove",dom.propagate,false);
+
+// Init
+function domInit() {
+  if (!SERVER) {
+    DomElement=prototype(prototype(prototype(prototype(document.createElement("div"))))).constructor; // TODO: check that this is robust
+    document.addEventListener("keyup",dom.propagate,false);
+    document.addEventListener("keydown",dom.propagate,false);
+    document.addEventListener("keypress",dom.propagate,false);
+    document.addEventListener("click",dom.propagate,false);
+  //document.addEventListener("mousemove",dom.propagate,false);
+  }
+}

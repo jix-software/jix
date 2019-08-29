@@ -36,10 +36,14 @@ function sfisLocId(ID) {
 function sffetch(ID) {
   return _SFOBJ[ID];
 }
+function sfoid(O) {
+  if (!contains(Object.getOwnPropertySymbols(O),SymbolId)) return Undefined;
+  return O[SymbolId];
+}
 function sfstore(O,HIDDEN) {
-  if (isUnboxed(O)) return;
-  var ID=O[SymbolId];
-  if (isUndefined(ID)) ID=sfid(HIDDEN);
+  if (isUnboxed(O) || isRootAtom(O)) return;
+  var ID=sfoid(O);
+  if (isUndefined(ID)) ID=sfid(isAtom(O)?True:HIDDEN);
                   else if (isDefined(sffetch(ID))) return;
   O[SymbolId]=ID;
   _SFOBJ[ID]=O;
@@ -59,18 +63,20 @@ function sfinit() {
 }
 
 // Parse
-var _SFSymbElt="ELT"+chr(2),_SFLANG;
+var _SFSymbElt="ELT"+chr(2),_SFLANG,ERRL,ERRI;
 function parsefList(L,I,STOP,CONT) {
 // FIXME: implement (LI,COL) when error()
-// TODO: implement a special treatment for types (i.e., configuring objects of type type according to the content of the object we parse)
+/* TODO: implement a special treatment for types (i.e., configuring objects of type type according to
+                                                                 [ the content of the object we parse) */
 // TODO: positionner les UP et resoudre les #
 // TODO: parse int and keep strings ; pure symbols are also strings ; parse Nil, Unspec, and other atoms
 // TODO: implement case-insensitive parsing for most slots, with slots actually stored in ucase
 // TODO: implement case-configureable serializing for most slots
 // TODO: implement parsing object of a type inheriting from an atomic type
-/* TODO: implement parsing JSON-like syntax, and JSON-compatible syntax (with or without mix between attrs and array elements
-                                                                         [ in the object (i.e. o{ A:1, B:2 | 3, 4, 5 }, qui est <=> a (o A=1 B=2 3 4 5)) */
-  var N=length(L),FOUND=False,TYPE=array,RES=[],VAR=Undefined,ELT=Nil,TYNAME;
+/* TODO: implement parsing JSON-like syntax, and JSON-compatible syntax (with or without mix
+         between attrs and array elements in the object (i.e. o{ A:1, B:2 | 3, 4, 5 }, qui
+         est <=> a (o A=1 B=2 3 4 5)) */
+  var N=length(L),FOUND=False,TYPE=array,RES=[],ADDA={},VAR=Undefined,ELT=Nil,TYNAME;
   function omg(S) {
     if (S=="(") return _SFLANG=="lisp"?S:"{";
     if (S==")") return _SFLANG=="lisp"?S:"}";
@@ -84,16 +90,26 @@ function parsefList(L,I,STOP,CONT) {
     else
     if (I<N && strIsAlpha(L[I]) && (I+1>=N || I+1<N && L[I+1]!=omg("="))) {
       if (L[I]=="type") TYNAME=L[I];
-                   else TYPE=type.getByName(L[I]);
+      else {
+        TYPE=type.getByName(L[I]);
+        if (isUndefined(TYPE)) TYPE=type(Nil,{ NAME:L[I] }); // FIXME: find a way to automatically download the types
+      }
       I++;
     }
     if (isUndefined(TYPE)) error("parsefList(1)-->"+I+" "+L[I]);
     if (_SFLANG=="json" && !OBJ0) if (L[I]!="{") error("parsefList(2)"); else I++;
     RES=obj({}); //TYPE({},isUndefined(TYNAME)?CONT:Undefined);
   }
+  function unescape(S) {
+    S=replaceAll(S,"\\\"",'"');
+    S=replaceAll(S,"\\\'","'");
+    S=replaceAll(S,"\\n","\n");
+    S=replaceAll(S,"\r","");
+    return S;
+  }
   function parseval(VAR,VAL,TYELT) {
     if (isUndefined(TYELT)) TYELT=obj;
-    if (!empty(TYPE.attrs())) {
+    if (isDefined(VAR) && (!isString(VAR) || !contains(VAR,".")) && !empty(TYPE.attrs())) {
       var A=TYPE.attr(VAR);
       if (A!=Nil) TYELT=A.TYPE;
     }
@@ -109,12 +125,18 @@ function parsefList(L,I,STOP,CONT) {
     }
     else
     if (TYELT==num) {
-      ; // check VAL is a number
+      if (length(VAL)>=2 && VAL[0]=='"' && VAL[length(VAL)-1]=='"') VAL=substring(VAL,1,length(VAL)-1); // FIXME: in .db files, in case there are numbers, probably they should strictly have the syntax of a number, not of a string containing a number
+      if (!strIsNum(VAL)) error("parseval(num expected)<"+VAL+">");
+      VAL=trim(VAL,"0",1,0); // FIXME: JSON.parse("01") doesn't parses to num(1), rather, it fails. Why ?
+      if (VAL=="") VAL="0"; // FIXME: shouldn't we use eval() ?
       VAL=JSON.parse(VAL);
     }
     else
-    if (TYELT==str) VAL=substring(VAL,1,length(VAL)-1);
-               else ;
+    if (TYELT==str || TYELT.inherits(str)) {
+      if (SERVER) VAL=Buffer.from(eval(VAL.valueOf()),"latin1").toString("utf8"); /*needed to unescape \xyzs in VAL*/
+             else VAL=unescape(substring(VAL,1,length(VAL)-1));
+      if (TYELT!=str) VAL=TYELT(VAL);
+    }
     return VAL;
   }
   function pushvar(VAL) {
@@ -122,7 +144,9 @@ function parsefList(L,I,STOP,CONT) {
     if (strIsOmg(VAR)) error("pushvar(0)-->"+VAR);
     if (strIsOmg(VAL)) error("pushvar(1)-->"+VAL);
     if (STOP==omg(")")) {
-      if (VAR==_SFSymbElt) ELT.push(VAL);
+      if (isString(VAR) && contains(VAR,".")) ADDA[VAR]=parseval(Undefined,VAL);
+      else
+      if (VAR==_SFSymbElt) ELT.push(parseval(Undefined,VAL));
       else {
         var TYELT;
         if (VAR==sy("+o")) TYELT=num;
@@ -132,7 +156,7 @@ function parsefList(L,I,STOP,CONT) {
       }
       VAR=Undefined;
     }
-    else RES.push(VAL);
+    else RES.push(parseval(Undefined,VAL));
   }
   var FIRST=True;
   while (I<N) {
@@ -157,11 +181,15 @@ function parsefList(L,I,STOP,CONT) {
       if ((_SFLANG=="lisp" && L[I]==omg("("))
        || (_SFLANG=="json" && L[I]==omg("("))
        || (_SFLANG=="json" && L[I+1]==omg("(")) || L[I]=="[") {
-        var A=parsefList(L,I+(_SFLANG=="lisp"?1:0),L[I]=="["?"]":omg(")"),CONT);
+        var A=parsefList(L,I+(_SFLANG=="lisp"||L[I]=="["?1:0),L[I]=="["?"]":omg(")"),CONT);
         pushvar(A[0]);
         I=A[1];
       }
-      else pushvar(L[I]),I++;
+      else {
+        pushvar(L[I]),I++;
+        if (_SFLANG=="json" && STOP=="]") if (L[I]==",") I++;
+                                          else if (L[I]!="]") error("parsefList::']' expected");
+      }
     }
   }
   if (ELT!=Nil) VAR="$",pushvar(ELT);
@@ -171,17 +199,22 @@ function parsefList(L,I,STOP,CONT) {
   else
   if (TYPE!=obj && TYPE!=array) { // FIXME: still not good in this way, replaces the objects directly, while in fact the new object's content should be injected into the old object, to keep the pointers that point to it correct ; do all this in linkf() rather than creating directly in the container here
     RES=TYPE(RES);
-    if (!isNil(CONT)) CONT.store(RES,RES.getId());
+    for (var N in ADDA) {
+      var A=splitTrim(N,".");
+      RES[A[0]][A[1]]=ADDA[N];
+    }
+    if (!isNil(CONT) && !isAtom(RES)) CONT.store(RES,RES.getId());
   }
   return [RES,I];
 }
+var ERRS;
 function parsef(S,CONT,LANG) {
   if (isString(CONT)) LANG=CONT,CONT=Undefined;
   if (isUndefined(LANG)) LANG="json";
   _SFLANG=LANG;
   if (LANG!="lisp" && LANG!="json") error("parsef(0)");
   parsefStart();
-  var RES=parsefList(tokenize(S),0,"",CONT)[0];
+  var RES=parsefList(tokenize(ERRS=S),0,"",CONT)[0];
   RES=linkf(RES,CONT);
   return RES;
 }
@@ -191,6 +224,7 @@ function parsefStart() {
   charnatSet("#",CharNatAlf);
   charnatSet("+",CharNatAlf);
   charnatSet("%",CharNatAlf);
+  charnatSet(".",CharNatAlf);
   tokenizeStart("( ) [ ] { } = : ,");
 }
 
@@ -205,7 +239,8 @@ function sfresult() {
 }
 function sfattrs(O) {
   return RES=Object.getOwnPropertyNames(O).concat(Object.getOwnPropertySymbols(O)).filter(function (X) {
-               return X!=SymbolUp && X!=SymbolCont && X!="TO"/*FIXME: use SymbolTo, instead*/
+               return X!=SymbolUp && X!=SymbolCont && X!="TO" /*FIXME: use SymbolTo, instead*/
+                   && X!="length" && (!isNumStr(X) || !isAtom(O));
              });
 }
 function serializefBis(O,MODE,MODES) {
@@ -218,7 +253,7 @@ function serializefBis(O,MODE,MODES) {
   var ISFIRST,SKIPSPC,SFSDONE;
   function sfslot(N,SMODE) {
     if (isUndefined(SMODE)) SMODE={};
-    if (O.hasOwnProperty(N) && !(N==sy("+o") && sfisHiddenId(O[N]))) {
+    if ((isAtom(O) && N=="$" || O.hasOwnProperty(N)) && !(N==sy("+o") && sfisHiddenId(O[N]))) {
       if (!SKIPSPC) {
         if (_SFLANG=="json" && !ISFIRST) sfout(",");
         if (isDefined(SMODE["nl"])) sfout("\n"+spc(_SFINDENT));
@@ -226,8 +261,13 @@ function serializefBis(O,MODE,MODES) {
       }
       SKIPSPC=False;
       sfout(isSymbol(N)?sy(N):N),sfout(_SFLANG=="lisp"?"=":":");
-      if (N==sy("+o")) sfout(O[N]);
-              else serializefBis(O[N],MODE=="flat"?"symb":MODE,MODES);
+      if (N=="caller" || N=="callee" || N=="arguments") VAL="<Forbidden>";
+      else
+      if (isAtom(O) && N=="$") VAL=O.valueOf();
+                          else VAL=O[N];
+      if (N==sy("+o")) sfout(VAL);
+                  else serializefBis(VAL,typeOf(VAL)==type?"name"
+                                                          :MODE=="flat" && !isAtom(VAL)?"symb":MODE,MODES);
       ISFIRST=False;
       SFSDONE[N]=1;
     }
@@ -236,7 +276,7 @@ function serializefBis(O,MODE,MODES) {
   if (isUndefined(O)) return sfout("Undef");
   if (isBoolean(O)) return sfout(O?"True":"False");
   if (isNumber(O)) return sfout(O.toString());
-  if (isString(O)) return sfout('"'+strEscape(O)+'"'); // TODO: Strings containing no blanks are serialized as symbols
+  if (typeOf(O)==str) return sfout('"'+strEscape(O)+'"'); // TODO: Strings containing no blanks are serialized as symbols
   if (isFunction(O)) return sfout('<Func>');
   if (isArray(O)) {
     ISFIRST=True;
@@ -244,15 +284,21 @@ function serializefBis(O,MODE,MODES) {
     for (var I=0;I<length(O);I++) {
       if (ISFIRST) ISFIRST=False;
               else sfout(_SFLANG=="lisp"?" ":",");
-      serializefBis(O[I],MODE=="flat"?"symb":MODE,MODES);
+      serializefBis(O[I],typeOf(O[I])==type?"name":MODE=="flat" && !isAtom(VAL)?"symb":MODE,MODES);
     }
     sfout("]");
   }
   else {
-    if (typeOf(O).root()!=obj) out(pretty(O)),cr(),error("serializefBis(1)");
-    if (MODE=="symb" && isUndefined(O[SymbolId])) error("serializefBis(undef ID)");
-    if (isDefined(_SFDONE[O[SymbolId]]) || MODE=="symb") return sfout("#"+O[SymbolId]);
+    if (isRootAtom(O)) out(pretty(O)),cr(),error("serializefBis(1)");
+    if (MODE=="symb" && isUndefined(sfoid(O))) error("serializefBis(undef ID)");
+    var DEFINED=isDefined(_SFDONE[sfoid(O)]);
     sfstore(O,True);
+    if (!DEFINED) _SFDONE[sfoid(O)]=O;
+    if (MODE=="name") {
+      if (!isFunction(O.name)) error("serializefBis(name)");
+      return sfout(O.name());
+    }
+    if (DEFINED || MODE=="symb") return sfout("#"+sfoid(O));
     if (_SFLANG=="lisp") sfout("(");
     if (typeOf(O)!=obj) sfout(typeOf(O).name()); else SKIPSPC=True;
     if (_SFLANG=="json") sfout("{"),SKIPSPC=True;
@@ -260,28 +306,28 @@ function serializefBis(O,MODE,MODES) {
     SFSDONE={};
     ISFIRST=True;
     for (var I=0;I<length(MODES);I++) sfslot(MODES[I][0],MODES[I][1]);
+    if (isAtom(O)) sfslot("$",{});
     for (var N of sfattrs(O)) if (isUndefined(SFSDONE[N])) sfslot(N,{}); // FIXME: serialize UP if needed
     if (_SFLANG=="lisp") sfout(")");
                     else sfout("}");
     _SFINDENT-=2;
-    if (isDefined(O[SymbolId])) _SFDONE[O[SymbolId]]=O;
   }
 }
 function serializefAllOfType(O,TYPE,MODE,MODES,SETID) { // TODO: have a special case with TYPE=="*"
   if (isUndefined(SETID)) SETID=False;
-  if (isAtom(O) || isFunction(O)) return;
+  if (isRootAtom(O) || isFunction(O)) return;
+  if (typeOf(O).root()==obj && isDefined(_SFDONE[sfoid(O)])) return;
   if (isArray(O)) {
     for (var I=0;I<length(O);I++) {
       serializefAllOfType(O[I],TYPE,MODE,MODES,SETID);
     }
   }
-  else
-  if (typeOf(O).root()==obj) {
+  else {
     if (SETID) sfstore(O);
     for (var N of sfattrs(O)) {
-      if (!isAtom(O[N]) && !isArray(O[N]) && MODE!="full"/*TODO: take PO into account here*/) sfstore(O[N]);
+      if (!isRootAtom(O[N]) && !isArray(O[N]) && MODE!="full"/*TODO: take PO into account here*/) sfstore(O[N]);
     }
-    if (!_SFDONE[O[SymbolId]] && (TYPE=="*" || typeOf(O)==TYPE)) {
+    if (!_SFDONE[sfoid(O)] && (TYPE=="*" || typeOf(O)==TYPE)) {
       if (_SFFIRST) _SFFIRST=False;
                else sfout("\n")
       serializefBis(O,MODE,MODES);
@@ -290,10 +336,9 @@ function serializefAllOfType(O,TYPE,MODE,MODES,SETID) { // TODO: have a special 
       serializefAllOfType(O[N],TYPE,MODE,MODES,True);
     }
   }
-  else error("serializeAllOfType(1)");
 }
 function serializef(O,FMT,LANG) {
-  if (isAtom(O)) return JSON.stringify(O);
+  if (isRootAtom(O)) return JSON.stringify(O);
   sfinit();
   if (isUndefined(LANG)) LANG="json";
   _SFLANG=LANG;
@@ -304,7 +349,14 @@ function serializef(O,FMT,LANG) {
     if (isUndefined(TYPE)) error("serializef(1)");
     serializefAllOfType(O,TYPE,F[1],F[2]);
   }
-  serializefAllOfType(O,"*","full",[]);
+  if (isArray(O)) { // FIXME: hack, somehow, to enable traversing graphs of objects while excluding arrays, and in the end, use O as an array to mean : "several objects", not an array to serialize.
+    for (var I=0;I<length(O);I++) if (!_SFDONE[sfoid(O[I])]) {
+      if (_SFFIRST) _SFFIRST=False;
+               else sfout("\n")
+      serializefBis(O[I],"full",[]);
+    }
+  }
+  else serializefAllOfType(O,"*","full",[]);
   sfrelease();
   return sfresult();
 }

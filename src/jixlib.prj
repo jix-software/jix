@@ -22,12 +22,14 @@
 include "basics.js";
 include "files.js";
 include "objects.js";
+include "multilingual.js";
 include "tokenize.js";
 include "pretty.js";
 include "serializef.js";
 include "servers.js";
 include "csvf.js";
 include "containers.js";
+include "conf.js";
 include "tests.js";
 include "init.js";
 

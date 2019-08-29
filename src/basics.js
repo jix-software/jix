@@ -31,13 +31,21 @@ var SERVER=(typeof window)=="undefined";
 function stop(errno) {
   if (SERVER) process.exit(errno); else nofunc();
 }
-var ERRLI=-1,ERRCOL=-1;
-function errlicolSet(LI,COL) {
-  ERRLI=LI,ERRCOL=COL;
+var ERRLI=-1,ERRCOL=-1,ERRFNAME=Nil;
+function errlicolSet(LI,COL,FNAME) {
+  if (LI>0) ERRLI=LI;
+  if (COL>0) ERRCOL=COL;
+  if (isDefined(FNAME)) ERRFNAME=FNAME;
 }
 function error(msg) {
-  if (ERRLI>0) msg+="; LI="+ERRLI.toString();
-  if (ERRCOL>0) msg+="; COL="+ERRCOL.toString();
+  if (ERRFNAME!=Nil) msg+=" in "+ERRFNAME;
+  if (ERRLI>0 || ERRCOL>0) msg+=" at (";
+  if (ERRLI>0) msg+=ERRLI.toString();
+  if (ERRCOL>0) {
+    if (ERRLI>0) msg+=",";
+    msg+=ERRCOL.toString();
+  }
+  if (ERRLI>0 || ERRCOL>0) msg+=")";
   (SERVER?console.log:alert)(msg);
   stop(1);
 }
@@ -72,6 +80,7 @@ function isNumStr(O) { return isNumber(O) || strIsNum(O); }
 function isAtom(O) { return isNil(O)
                           || isSymbol(O) || isBoolean(O)
                           || isNumber(O) || isString(O); }
+function isRootAtom(O) { return typeOf(O).root()==typeOf(O) && isAtom(O); }
 function isArray(O) { return isa0(O,Array); }
 function isFunction(O) { return isa0(O,Function); }
 
@@ -94,7 +103,7 @@ var CharNatNone=0,CharNatUnknown=CharNatNone,
 var CharNat=[];
 
 function asc(c) {
-  return c.charCodeAt(0)&255;
+  return c.codePointAt(0);
 }
 function chr(i) {
   return String.fromCharCode(i);
@@ -104,6 +113,22 @@ function charnat(c) {
 }
 function charnatSet(c,n) {
   return CharNat[asc(c)]=n;
+}
+function charIsLetter(C) {
+  return asc(C)>=asc("A") && asc(C)<=asc("Z")
+      || asc(C)>=asc("a") && asc(C)<=asc("z");
+}
+function charIsDigit10(C) {
+  return asc(C)>=asc("0") && asc(C)<=asc("9");
+}
+function charIsXDigit(C) {
+  return charIsDigit10(C) || (asc(C)>=asc('A') && asc(C)<=asc('F')) || (asc(C)>=asc('a') && asc(C)<=asc('f'));
+}
+function charIsDigitInRadix(C,RADIX) {
+  if (RADIX<2 || RADIX>16) error("charIsDigitInRadix");
+  if (RADIX<=10) return charIsDigit10(C) && asc(C)<=asc('0')+RADIX-1;
+  return charIsDigit10(C) || (charIsXDigit(C) && ((asc(C)>=asc('A') && asc(C)<=asc('A')+RADIX-11)
+                                               || (asc(C)>=asc('a') && asc(C)<=asc('a')+RADIX-11)));
 }
 function charIsAlpha(C) {
   return charnat(C)==CharNatAlf;
@@ -124,7 +149,7 @@ function charIs(C,N) {
   return charnat(C)==N;
 }
 function strIs(S,N) {
-  if (!isString(S)) return False;
+  if (!isString(S) || length(S)==0) return False;
   for (var I=0;I<length(S);I++) if (!charIs(S[I],N)) return False;
   return True;
 }
@@ -144,30 +169,10 @@ function strIsBlank(S) {
 function charsInit() {
   var i;
   for (i=0;i<256;i++) CharNat[i]=CharNatNone;
-  for (i=0;i<=126;i++) CharNat[i]=CharNatOmg;
+  for (i=32;i<=126;i++) CharNat[i]=CharNatOmg;
   for (i=asc('A');i<=asc('Z');i++) CharNat[i]=CharNatAlf;
   for (i=asc('a');i<=asc('z');i++) CharNat[i]=CharNatAlf;
-  CharNat[225]=CharNatAlf; // á // NOTE: if too tedious to add only those we need, set all above 127 to Alfs
-  CharNat[224]=CharNatAlf; // à
-  CharNat[226]=CharNatAlf; // â
-  CharNat[228]=CharNatAlf; // ä
-  CharNat[233]=CharNatAlf; // é
-  CharNat[232]=CharNatAlf; // è
-  CharNat[234]=CharNatAlf; // ê
-  CharNat[237]=CharNatAlf; // í
-  CharNat[236]=CharNatAlf; // ì
-  CharNat[238]=CharNatAlf; // î
-  CharNat[243]=CharNatAlf; // ó
-  CharNat[242]=CharNatAlf; // ò
-  CharNat[244]=CharNatAlf; // ô
-  CharNat[246]=CharNatAlf; // ö
-  CharNat[250]=CharNatAlf; // ú
-  CharNat[249]=CharNatAlf; // ù
-  CharNat[251]=CharNatAlf; // û
-  CharNat[252]=CharNatAlf; // ü
-  CharNat[241]=CharNatAlf; // ñ
-  CharNat[133]=CharNatAlf; // ...
-  CharNat[150]=CharNatAlf; // --
+  for (i=192;i<=255;i++) CharNat[i]=CharNatAlf;
   CharNat[asc('"')]=CharNatDQuote;
   CharNat[asc('\'')]=CharNatQuote; // These two ones to cut at beginning of a string
   CharNat[asc('_')]=CharNatAlf;
@@ -344,6 +349,25 @@ function arrayToDict(a) {
 function splice(t,i,ndel,t2) {
   t.splice.apply(t,[i,ndel].concat(t2));
 }
+function acopy(A,I0,I1) {
+  var RES=arrayN(I1-I0);
+  for (var I=I0;I<I1;I++) RES[I-I0]=A[I];
+  return RES;
+}
+function sort(A,SLOTS) {
+  if (isUndefined(SLOTS) || isString(SLOTS) && length(SLOTS)==0) return A;
+  if (!isString(SLOTS)) error("sort"); // TODO: implement multislot sorting
+  var SIGN=+1;
+  if (SLOTS[0]=="+" || SLOTS[0]=="-") {
+    SIGN=SLOTS[0]=="+"?+1:-1;
+    SLOTS=substring(SLOTS,1,length(SLOTS));
+    if (length(SLOTS)==0) error("sort(2)");
+  }
+  A.sort(function (O1,O2) {
+    return O1[SLOTS]>O2[SLOTS]?SIGN:-SIGN;
+  });
+  return A;
+}
 
 // Display
 function strEscape(s) {
@@ -374,6 +398,8 @@ function display(o) { // Similar to JSON.stringify()
   /*if (display_mode=="raw")*/ res=o;
     if (display_mode=="cooked") res='"'+strEscape(o)+'"';
   }
+  else
+  if (isSymbol(o)) res=o.toString();
   else
   if (isFunction(o)) res="<JSFunc>";
   else

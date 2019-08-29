@@ -22,15 +22,18 @@
 include "basics.js";
 include "files.js";
 include "objects.js";
+include "multilingual.js";
 include "tokenize.js";
 include "pretty.js";
 include "serializef.js";
 include "servers.js";
 include "csvf.js";
 include "containers.js";
+include "conf.js";
 include "events.js";
 include "dom.js";
 include "widgets.js";
+include "jxmle.js";
 include "jxml.js";
 include "tests.js";
 include "init.js";
@@ -46,6 +49,8 @@ function installOnload(f) {
     }
   }
 }
+
+if (SERVER) module.exports=jix;
 //installOnload(function() { // FIXME: Should not be in the onLoad if we want to have everything initialized before the <script>...</script> tags are executed
   jix.init();
 //});

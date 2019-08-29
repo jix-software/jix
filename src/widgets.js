@@ -230,7 +230,8 @@ function htmlType(NAME) {
 
 for (var N of [
        "body",
-       "span", "div", "br","hr",
+       "i","u","b",
+       "span", "div", "br","hr","img",
        "table", "tr", "td",
        "_input"
      ]
@@ -348,8 +349,11 @@ setprop(html,"propagate",function (EVT) {
 
 // Console
 function out0(S) {
-  if (isHtml(S)) { html.body().$.push(S);return; }
-  if (OUTS!=Nil) { _out0(S);return; }
+  if (isHtml(S)) {
+    if (isHtml(S.TO)) S=S.TO;
+    html.body().$.push(S);return;
+  }
+  if (OUTS!=Nil || SERVER) { _out0(S);return; }
   if (!isString(S)) error("widgets.out0");
   if (S=="<br>" || S=="\n") S=br();
   if (S=="<hr>") S=hr();

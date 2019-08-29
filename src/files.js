@@ -19,6 +19,24 @@
  *  along with JIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+// File error contexts
+var SymbolLicol=Symbol("licol");
+function licolSet(S,LI,COL,FNAME) {
+  if (isUnboxed(S)) S=new String(S);
+  S[SymbolLicol]={ LI:LI, COL:COL, FNAME:FNAME }; 
+  return S;
+}
+function licol(S) {
+  var LICOL;
+  if (isBoxed(S)) LICOL=S[SymbolLicol];
+  if (isUndefined(LICOL)) LICOL={ LI:-1, COL:-1, FNAME:Undefined }; 
+  return LICOL;
+}
+function errlicolSet2(LICOL) { // FIXME: find a way to redefine errlicolSet() in a transparent way
+  if (isString(LICOL)) LICOL=licol(LICOL);
+  errlicolSet(LICOL.LI,LICOL.COL,LICOL.FNAME);
+}
+
 // Files
 function fileExists(fname) {
   if (SERVER) return fs.existsSync(fname);
@@ -29,17 +47,23 @@ function fileIsDir(fname) {
   var stats=fs.fstatSync(fd);
   return stats.isDirectory();
 }
-function fileRead(fname,encoding) {
+function fileRead(fname,encoding/*FIXME: use this ; or remove it*/) {
   if (SERVER) {
     if (!fileExists(fname)) error("File not found: "+fname);
     var RES=fs.readFileSync(fname,"latin1"/*"ascii"*/);
-    RES=Buffer.from(RES,"latin1").toString("utf8"); // 
-    return RES;
+    RES=Buffer.from(RES,"latin1").toString("utf8");
+    return licolSet(RES,0,0,fname);
   }
   else return httpSend("GET","http://localhost:8080/"+fname); // FIXME: replace by a jix server call
 }
 function filePath(fname) {
-  return path.dirname(fname);
+//return path.dirname(fname);
+  var a=fnameNormalize(fname).split("/"),s="";
+  for (var i=0;i<length(a)-1;i++) {
+    s+=a[i];
+    if (i+2<length(a)) s+="/";
+  }
+  return s;
 }
 function fileName0(fname) {
   var a=fname.split("/");
@@ -60,6 +84,11 @@ function fileWrite(fname,str) {
   catch (err) {
     error("Can't write file: "+fname);
   }
+}
+function fileCopy(SRC,DEST) {
+  if (SRC==DEST) return;
+  var S=fileRead(SRC);
+  fileWrite(DEST,S);
 }
 function fileDelete(fname) {
   fs.unlinkSync(fname);
@@ -82,7 +111,7 @@ _READ={};
 function fileReadSet(ext,readFunc) {
   _READ[ext]=readFunc;
 }
-function dirRead(fname,mask) {
+function dirRead(fname,mask,rec,alle) {
   function fileRead(fname) {
     var dir=path.dirname(fname)+"/";
     fname=path.basename(fname);
@@ -103,12 +132,15 @@ function dirRead(fname,mask) {
   for (var i=0;i<a.length;i++) {
     var b=fileIsDir(dir+"/"+a[i]);
     if (b) {
-      d.val[a[i]]=dirRead(dir+"/"+a[i],mask);
-      d.val[a[i]].parent=d;
+      if (rec) {
+        d.val[a[i]]=dirRead(dir+"/"+a[i],mask,rec,alle);
+        d.val[a[i]].parent=d;
+      }
     }
     else {
-      d.val[a[i]]=vfileCreate(a[i],b,d,null);
-      if (mask==undefined || endsWith(a[i],mask)) d.val[a[i]].val=fileRead(dir+"/"+a[i]);
+      var matches=mask==undefined || endsWith(a[i],mask);
+      if (alle || matches) d.val[a[i]]=vfileCreate(a[i],b,d,null);
+      if (matches) d.val[a[i]].val=fileRead(dir+"/"+a[i]);
     }
   }
   return d;
@@ -121,6 +153,9 @@ function foreach_vfile(d,func) {
   }
   func(d);
 }
+function fnameNormalize(fname) {
+  return replaceAll(path.resolve(path.normalize(fname)),"\\","/");
+}
 function vfilePathname(vf) {
   var a=[];
   do {
@@ -128,7 +163,7 @@ function vfilePathname(vf) {
     vf=vf.parent;
   }
   while (vf!=null);
-  return replaceAll(path.normalize(a.reverse().join("/")),"\\","/");
+  return fnameNormalize(a.reverse().join("/"));
 }
 function isChildPath(p,parent) {
   p=path.normalize(p);
@@ -290,18 +325,35 @@ function env(VAR) {
   if (SERVER) return process.env[VAR]; else return "";
 }
 
-// Argv
+// Processes
 function argvRemove(argv,j) {
   splice(argv,j,1,[]);
 }
+function processCwd() {
+  return fnameNormalize(process.cwd());
+}
+function chdir(PATH) {
+  return process.chdir(PATH);
+}
+function spawn(EXE,PARM) {
+  function from(S,KEEP) {
+    return Buffer.from(S).toString();
+  }
+  var RES=child_process.spawnSync(EXE,PARM);
+  if (from(RES.stderr).length>0) {
+    throw new Error(from(RES.stderr));
+  }
+  return from(RES.stdout).trim("\n");
+}
 
 // Init
-var fs,path,url;
+var fs,path,url,child_process;
 function filesInit() {
   if (SERVER) {
     fs=require('fs');
     path=require('path');
     url=require('url');
+    child_process=require('child_process');
   }
   consoleInit();
 }

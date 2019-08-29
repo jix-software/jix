@@ -21,7 +21,8 @@
 
 var _SERIALIZING=[],
     SERIALIZEINDENT=0,
-    SERIALIZING=False;
+    SERIALIZING=False,
+    PRETTYINDENT2=False; // TODO: reunify this later with the rest
 
 function prettyBis(O,MODE,SKIN,INDENT) {
   if (INDENT==Undefined) INDENT=False;
@@ -52,16 +53,27 @@ function prettyBis(O,MODE,SKIN,INDENT) {
   else {
     function incIndent(N) {
       SERIALIZEINDENT+=N;
-      OUTINDENT=SERIALIZEINDENT;
     }
     if (isArray(O)) {
       _SERIALIZING.push(O);
       RES+="[";
       if (INDENT) incIndent(2);
+      var PREVINDENT2=False;
       for (var I=0;I<length(O);I++) {
-        if (I>0) RES+=",";
         if (INDENT) RES+="\n"+spc(SERIALIZEINDENT);
+        var ISATOM=isAtom(O[I]) || isType(O[I]);
+        if (PRETTYINDENT2 && !INDENT && !ISATOM) {
+          incIndent(+2);
+          if (!PREVINDENT2) RES+="\n"+spc(SERIALIZEINDENT);
+        }
         RES+=prettyBis(O[I],MODE,SKIN);
+        if (I+1<length(O)) RES+=",";
+        if (PRETTYINDENT2 && !INDENT && !ISATOM) {
+          if (I+1<length(O)) RES+="\n"+spc(SERIALIZEINDENT);
+          incIndent(-2);
+          PREVINDENT2=True;
+        }
+        else PREVINDENT2=False;
       }
       if (INDENT) incIndent(-2);
       RES+="]";
@@ -94,7 +106,7 @@ function prettyBis(O,MODE,SKIN,INDENT) {
           if (SA||SV) if (INDENT) RES+="\n"+spc(SERIALIZEINDENT);
           if (SA||SV) FIRST=False;
           if (SA) RES+=isSymbol(NAME)?pretty(NAME):NAME;
-          if (SA&&SV) RES+="=";
+          if (SA&&SV) RES+=":";
           if (SV) {
             var VAL;
             if (NAME=="caller" || NAME=="callee" || NAME=="arguments") VAL="<Forbidden>";
@@ -112,9 +124,14 @@ function prettyBis(O,MODE,SKIN,INDENT) {
   return RES;  
 }
 function pretty(O,MODE,SKIN) { // Similar to JSON.stringify()
+  var INDENT=False;
+  if (MODE=="indent") MODE=Undefined,INDENT=True; // Hack (cf. PRETTYINDENT2)
+  var OPRETTYINDENT2=PRETTYINDENT2;
+  if (INDENT) PRETTYINDENT2=1;
   if (!SERIALIZING) _SERIALIZING=[];
   if (isUndefined(MODE)) MODE="short";
   var RES=prettyBis(O,MODE,SKIN);
   if (!SERIALIZING) _SERIALIZING=[];
+  PRETTYINDENT2=OPRETTYINDENT2;
   return RES;
 }

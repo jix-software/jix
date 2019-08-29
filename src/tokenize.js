@@ -33,6 +33,27 @@ function rangeValue(RG) {
   return substring(RG.OBJ,RG.MIN,RG.MAX);
 }
 
+// Strings (common patterns)
+function strNumberLength(S,i) {
+  var i0=i;
+  while (S[i]=='+' || S[i]=='-') i++;
+  if (!charIsDigit10(S[i])) return 0;
+  var DOT=False,
+      RADIX=10;
+  if (S[i+1]=='b' || S[i+1]=='B') RADIX=2,i+=2; // FIXME: check completely that always i<length(S)
+  if (S[i+1]=='x' || S[i+1]=='X') RADIX=16,i+=2;
+  if (!charIsDigitInRadix(S[i],RADIX)) return 0;
+  while (i<length(S) && charIsDigitInRadix(S[i],RADIX)) {
+    while (i<length(S) && charIsDigitInRadix(S[i],RADIX)) i++;
+    if (S[i]=='.') { if (DOT) return i-i0; else DOT=True,i++; }
+  }
+  if (RADIX==10 && (S[i]=='e' || S[i]=='E')) {
+    i++;if (S[i]=='+' || S[i]=='-') i++;
+    while (i<length(S) && charIsDigitInRadix(S[i],RADIX)) i++;
+  }
+  return i-i0;
+}
+
 // Lexer
 function lexerReadString(S,i,C) {
   while (i<length(S)) {
@@ -73,7 +94,7 @@ function charnatToToknat(N) {
     case CharNatOmg  : RES=TokenNatOpn; break;
     case CharNatDigit: RES=TokenNatNum; break;
     case CharNatBlank: RES=TokenNatSpc; break;
-    default: out(display(N)),error("toknat");
+    default: return TokenNatNone; //out(display(N)),error("charnatToToknat");
   }
   return RES;
 }
@@ -86,8 +107,8 @@ function lexerLiColNext(RG) {
   }
   return [LI,COL];
 }
-var TOKOPS={},TOKENIZECOMMENTS=True; // FIXME: improve management of TOKENIZECOMMENTS
-function lexerNext(RG) { // FIXME: should stop reading an omega when a pattern belonging to TOKOPS appears
+var TOKOPS,TOKENIZECOMMENTS=True; // FIXME: improve management of TOKENIZECOMMENTS
+function lexerNext(RG) {
   var S=RG.OBJ;
   var i0,i=RG.MAX;
   var BEG,END,LI,COL;
@@ -117,6 +138,11 @@ function lexerNext(RG) { // FIXME: should stop reading an omega when a pattern b
       BEG=i0,END=i+(i>=length(S)?0:1);
       NAT=TokenNatComment;
     }
+    else
+    if ((S[i]=='+' || S[i]=='-' || charIsDigit10(S[i])) && strNumberLength(S,i)>0) {
+      BEG=i,END=i+strNumberLength(S,i);
+      NAT=TokenNatNum;
+    }
     else {
       var j;
       j=lexerRead(S,i,charnat(S[i]),charIs(S[i],CharNatAlf)?CharNatDigit:-1); // FIXME: add floating point constants
@@ -134,22 +160,32 @@ function lexerNext(RG) { // FIXME: should stop reading an omega when a pattern b
   RG.NAT=NAT;
   RG.LI=LI;
   RG.COL=COL;
-  ERRLI=LI;
-  ERRCOL=COL;
+  errlicolSet(LI,COL);
   S=rangeValue(RG);
   if (RG.NAT==TokenNatOpn) {
-    var N=length(S),TOK=S;
-    while (N>0) {
-      TOK=substring(S,0,N);
-      if (TOKOPS[TOK]!=Undefined) break;
-      N--;
+    function findop(I) {
+      var N=length(S),TOK=S;
+      while (N>0) {
+        TOK=substring(S,I,N);
+        if (TOKOPS[TOK]!=Undefined) break;
+        N--;
+      }
+      return N;
     }
-    if (N>0 && N!=length(S)) RG.MAX=RG.MIN+N;
+    var N=findop(0);
+    if (N>0 && N!=length(S)/*FIXME: !=length(S) should not be necessary ; find why it's there*/) RG.MAX=RG.MIN+N;
+    else
+    if (N==0) {
+      for (var I=1;I<length(S);I++) {
+        N=findop(I);
+        if (N>0) { RG.MAX=RG.MIN+I;break; }
+      }
+    }
   }
   return NAT;
 }
 function lexerStart(TEXT) {
-  ERRLI=ERRCOL=1;
+  errlicolSet(1,1,licol(TEXT).FNAME);
   var RG=range(TEXT,0,0,1,1);
   lexerNext(RG);
   return RG;
@@ -161,21 +197,25 @@ function tokenize(SRC,KEEP) {
   var RES=[],
       RG=lexerStart(SRC);
   while (!lexerEOF(RG)) {
-    if (KEEP || RG.NAT!=TokenNatSpc && RG.NAT!=TokenNatComment) RES.push(rangeValue(RG));
+    if (KEEP || RG.NAT!=TokenNatSpc && RG.NAT!=TokenNatComment) RES.push(licolSet(rangeValue(RG),RG.LI,RG.COL));
     lexerNext(RG);
   }
+  errlicolSet(-1,-1);
   return RES;
 }
 
 // Parser
-var PRIOR={},POSTFIX={},MULTI={};
+var PRIOR,POSTFIX,MULTI;
 function tokenizeStart(TOKSPEC) {
+  TOKOPS={};
+  PRIOR={},POSTFIX={},MULTI={};
   var T=splitTrim(TOKSPEC," "),
       P=-1;
   for (var I in T) {
     if (T[I]==";;") P--;
     else {
       var OP=T[I],POST=False;
+      for (var I=0;I<length(OP);I++) if (!charIsOmg(OP[I])) error("tokenizeStart"); // Or either, force OP's chars to become Omg ?
       if (OP[length(OP)-1]=="_") POST=True,OP=substring(OP,0,length(OP)-1);
       var OP0=OP;
       if (OP[0]=="_") OP=substring(OP,1,length(OP));

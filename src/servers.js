@@ -54,10 +54,10 @@ var server=type(function (PORT,API) {
                     if (!isString(URL) || !isUndefined(API)) error("server.cons(3)");
                     RES.CATEG="r"; // Remote
                   //if (URL.substring(0,7)!="http://") URL="http://"+URL;
-                    var URLO=urlParse(URL);
+                    var URL0=urlParse(URL);
                     RES.HREF=URL;
-                    RES.ADDR=URLO.hostname;
-                    RES.PORT=JSON.parse(URLO.port);
+                    RES.ADDR=URL0.hostname;
+                    RES.PORT=JSON.parse(URL0.port==""?"80":URL0.port);
                     var CLI=RES.call("_connect",[]);
                     RES.IDCLI=CLI.IDSRV;
                   }
@@ -153,17 +153,26 @@ server.setMethod("send",function (METHOD,PARMS,DATA,CALLBACK) {
   var REQ,RES=null,
       ASYNC=isDefined(CALLBACK);
   function ret(RES) {
-    if (RES!=null && REQ.getResponseHeader("Content-Type")=="application/json") RES=JSON.parse(RES);
+    if (RES!=null && (SERVER || REQ.getResponseHeader("Content-Type")=="application/json")) RES=JSON.parse(RES);
     return RES;
   }
   if (!isRemote(this)) error("server.send(!remote)");
   if (SERVER) {
-    if (!ASYNC) error("server.send(SERVER)");
- /* FIXME: should also work when running in node, by means of http.request()
-    REQ=http.request(...);
-    ...*/
+    if (ASYNC) error("server.send(SERVER)::ASYNC");
+    else {
+      RES=spawn('node',
+                ['./bin/httpsend.js',
+                 JSON.stringify([this.HREF,DATA])
+                ]);
+      var L=splitTrim(RES,"\n"),
+          HEADERS=JSON.parse(L[0]);
+      RES=L[1];
+    //if (HEADERS["content-type"]=="application/json") RES=JSON.parse(RES);
+    }
   }
   else {
+    if (METHOD!="GET" && !isUndefined(DATA)) DATA=JSON.stringify(DATA);
+                                        else DATA=null;
     REQ=new XMLHttpRequest();
     REQ.open(METHOD,this.HREF+(PARMS!=Nil && PARMS!=""?"?"+PARMS:""),ASYNC);
     REQ.setRequestHeader("Content-Type","application/x-www-form-urlencoded");
@@ -177,8 +186,6 @@ server.setMethod("send",function (METHOD,PARMS,DATA,CALLBACK) {
       }
     }
   }
-  if (METHOD!="GET" && !isUndefined(DATA)) DATA=JSON.stringify(DATA);
-                                      else DATA=null;
   if (SERVER) ; // ...
          else REQ.send(DATA);
   if (ASYNC) return null;
@@ -223,17 +230,20 @@ server.setMethod("start",function () {
   function handler(REQ,ANSW) {
     var REQLOG=_REQLOG=req(REQ);
     _CURSRV=THIS;
-    function ret(ERR,CTYPE,MSG,RES) {
+    function ret(ERR,CTYPE,MSG,RES,BIN) {
       if (CTYPE=="application/json") RES=isUndefined(RES)?"null"/*FIXME: clean this*/:JSON.stringify(RES);
       var SRES=RES;
-      if (length(SRES)>80) SRES=substring(RES,0,80)+" ...";
+      if (!BIN && length(SRES)>80) SRES=substring(RES,0,80)+" ...";
       log(REQNO++,REQLOG,MSG,ERR,SRES);
       ANSW.writeHead(ERR, {'Content-Type': CTYPE,
                            'Access-Control-Allow-Origin': '*' // Available to all
                           });
     //RES=Buffer.from(RES,"latin1").toString("utf8"); // TODO: doesn't work for sending data from cli->srv ; need to have everything in UTF8 in srv, and do all communications in utf8, and optionally, reexport to latin1 for the files
-      ANSW.write(RES);
-      ANSW.end("\n");
+      if (isDefined(BIN)) ANSW.end(RES);
+      else {
+        ANSW.write(RES);
+        ANSW.end("\n");
+      }
       _REQLOG=_CURSRV=Nil;
     }
     if (endsWith(REQLOG.PATHNAME,".jix")) { // FIXME: extension should rather be ".srv"
@@ -263,15 +273,34 @@ server.setMethod("start",function () {
       }
     }
     else {
-      fs.readFile(__dirname+'/'+REQLOG.PATHNAME,'utf-8',function(ERR,DATA) {
+      function rd(PATH,BIN,FUNC) {
+        if (BIN) fs.readFile(PATH,FUNC); // DOESN'T WORK with 'binary' as the second parameter, e.g. for images !
+            else fs.readFile(PATH,'utf-8',FUNC);
+      }
+      var BIN=False;
+      if (endsWith(REQLOG.PATHNAME,".jpg")) BIN=True;
+      rd(__dirname+'/'+REQLOG.PATHNAME,BIN,function(ERR,DATA) {
         ; // FIXME: if the pathname is void, set pathname=index.html
         if (ERR) {
           ret(404,"text/html","",'<h1>Page Not Found</h1>');
         }
         else { 
-          ret(200,"text/html","",DATA);
+          var MIME="text/html";
+          if (endsWith(REQLOG.PATHNAME,".css")) MIME="text/css";
+          if (endsWith(REQLOG.PATHNAME,".jpg")) MIME="image/jpeg";
+          ret(200,MIME,"",DATA,BIN);
         }
       });
+    /*var s = fs.createReadStream(__dirname+'/'+REQLOG.PATHNAME); // Probably better asynchronicity. 
+      s.on('open', function () {
+        res.setHeader('Content-Type','image/jpg');
+        s.pipe(res);
+      });
+      s.on('error', function () {
+        res.setHeader('Content-Type', 'text/plain');
+        res.statusCode = 404;
+        res.end('Not found');
+      });*/
     }
   }
   if (!isNil(this._RUNNING)) error("server.start");

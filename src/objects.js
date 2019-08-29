@@ -253,7 +253,7 @@ function isUnboxed(O) {
   if (O==Nil/*Nil or Undefined*/) return True;
   return isAtom(O) && O.valueOf()===O;
 }
-function isBoxed(O) {
+function isBoxed(O) { // FIXME: to make files independent from objects, put this in basics
   if (O==Nil) return False;
   return !isUnboxed(O);
 }
@@ -306,9 +306,9 @@ type.setMethod("isAtom",function (STRICT) {
                                         || this.inherits(num) || this.inherits(str);
 });
 type.setMethod("root",function () {
-  if (this.isAtom(True)) return this;
-                    else if (this.parent()==Nil) return obj;
-                                             else return this.parent().root();
+  if (this.isAtom(True) || this==array) return this;
+                                   else if (this.parent()==Nil) return obj;
+                                                           else return this.parent().root();
 });
 
 // Sets
@@ -559,7 +559,7 @@ setprop(obj,"delete",function (O,MODE) {
 
 // Trees
 function tree(A,CONT) {
-  if (isAtom(A) || constructor(A)!=Array && !isTemplate(A)/*FIXME: tree() should not need to know exceptional datatypes like template()*/ || length(A)<1 || !isType(A[0])) return A;
+  if (isAtom(A) || constructor(A)!=Array && !isTemplate(A)/*FIXME: tree() should not need to know exceptional datatypes like template()*/ || length(A)<1 || !isType(A[0])) return A; // FIXME: should not return the array as such when there is no tag, there should be a default datatype (e.g. div, or columns (?) for markup)
   var O=length(A)==1?{}:A[1];
   if (constructor(O)!=Object) error("tree(1)");
   O.$=[];

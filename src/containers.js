@@ -58,6 +58,7 @@ var container=type(function (NAME,FNAME,CATEG,SRV) {
                               "IDCONT","PARENT",
                               "NAME","FNAME=''",
                               "LASTID=0",
+                              "QMETHODS={}",
                               "$={}"] });
 
 container.LASTIDCONT=0; // FIXME: implement classes that remember their instances & set id to them
@@ -75,6 +76,12 @@ container.setMethod("parent",function () {
 container.setMethod("setParent",function (CONT) {
   if (!isContainer(CONT)) error("setParent");
   this.PARENT=CONT;
+});
+container.setMethod("qmethod",function (NAME) {
+  return this.QMETHODS[NAME];
+});
+container.setMethod("setQMethod",function (NAME,FUNC) {
+  this.QMETHODS[NAME]=FUNC;
 });
 
 // Store
@@ -370,6 +377,16 @@ query.setMethod("match",function (O,Q) {
   }
   if (!isObject(O)) return False;
   var RES=True;
+  if (typeOf(this.QUERY)==array) {
+    var CONT=O.containerOf();
+    if (isDefined(CONT)) {
+      var M=CONT.qmethod(this.QUERY[0]);
+      if (isUndefined(M)) error("query.match::qmethod(1)");
+      RES=M(O,...acopy(this.QUERY,1,length(this.QUERY)));
+    }
+    else error("query.match::qmethod(2)");
+  }
+  else
   for (VAR in this.QUERY) {
     if (!this.match(O[VAR],this.QUERY[VAR])) RES=False;
   }
