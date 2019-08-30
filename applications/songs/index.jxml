@@ -1,0 +1,65 @@
+<!-- index.jxml
+     Copyright (C) Henri Lesourd 2019.
+  -->
+<jxml class="c0">
+  <title>Songs</title>
+
+  <import src="songs.css">
+  <import src="jixweb.js">
+
+  <var type="database" name="DB1" src="http://localhost/songs/PopMusic">
+
+  <skin id="SK">
+    <shape class="song" mode="view">
+      <view mode="short">
+        $Title&nbsp;($Year)&nbsp;$Length.
+      </view>
+      <view mode="view">
+        <columns targets="mode:$" class="c1">
+          <lines class="c2">
+            <i>$Title</i>&nbsp;($Genre)
+            <>
+            $Genre&nbsp;($Year)
+            <>
+            $Length
+            <>
+            <button class="c5" title="EDIT"
+                    events="click=>mode!edit"
+            >
+          </lines>
+          <span style="width: 2px"></span>
+          <splitv class="c3" value="$Authors"/>
+        </columns>
+      </view>
+      <view mode="edit">
+        <lines targets="save:$">
+          <input class="c4" name="Title" value="$Title">
+          <input class="c4" name="Year" value="$Year">
+          <input class="c4" name="Length" value="$Length">
+          <button class="c5" title="SAVE"
+                  events="click=>save&mode!view"
+          >
+        </lines>
+      </view>
+    </shape>
+  </skin>
+
+  <table cellspacing="0" border="0" width="100%">
+    <tr><td>
+      <columns targets="load:#L1!*">
+         <lines>
+           <input class="c4" name="Title" value="*">
+           <input class="c4" name="Year" value="*9">
+         </lines>
+         <button class="c5" title="OK"
+                 events="click => load"
+         >
+      </columns>
+    </td></tr>
+    <tr><td>
+      <div style="width: 100%; height: 75vh; overflow-y: scroll;">
+        <lines id="L1" src="DB1" value='{ Year:"*5" }' skin="SK"/>
+      </div>
+    </td></tr>
+  </table>
+</jxml>
