@@ -114,7 +114,14 @@ function parsefList(L,I,STOP,CONT) {
       if (A!=Nil) TYELT=A.TYPE;
     }
     if (TYELT==obj) {
-      if (length(VAL)>=2 && VAL[0]=='"' && VAL[length(VAL)-1]=='"') TYELT=str;
+      if (isString(VAL) && VAL!="" && strNumberLength(VAL,0)==length(VAL)) TYELT=num;
+      else
+      if (isString(VAL) && length(VAL)>=2 && VAL[0]=='"' && VAL[length(VAL)-1]=='"') {
+        TYELT=str;
+        if (length(VAL)>2 && strNumberLength(VAL,1)==length(VAL)-2) TYELT=num; // FIXME: hack ; .db files should have numbers written as numbers
+      }
+      else
+      if (VAL=="Nil") VAL=Nil;
       else ; // TODO: add other cases : recognize numbers, booleans, etc. in VAL
     }
     if (TYELT==bool) {
@@ -126,9 +133,9 @@ function parsefList(L,I,STOP,CONT) {
     else
     if (TYELT==num) {
       if (length(VAL)>=2 && VAL[0]=='"' && VAL[length(VAL)-1]=='"') VAL=substring(VAL,1,length(VAL)-1); // FIXME: in .db files, in case there are numbers, probably they should strictly have the syntax of a number, not of a string containing a number
-      if (!strIsNum(VAL)) error("parseval(num expected)<"+VAL+">");
-      VAL=trim(VAL,"0",1,0); // FIXME: JSON.parse("01") doesn't parses to num(1), rather, it fails. Why ?
-      if (VAL=="") VAL="0"; // FIXME: shouldn't we use eval() ?
+      if (strNumberLength(VAL,0)!=length(VAL)) error("parseval(num expected)<"+VAL+">");
+      if (VAL[0]=="0") VAL=trim(VAL,"0",1,0); // FIXME: JSON.parse("01") doesn't parses to num(1), rather, it fails. Why ?
+      if (VAL=="" || VAL[0]==".") VAL="0"+VAL; // FIXME: shouldn't we use eval() ?
       VAL=JSON.parse(VAL);
     }
     else
@@ -142,7 +149,7 @@ function parsefList(L,I,STOP,CONT) {
   function pushvar(VAL) {
     if (isString(VAR)) if (syExists(VAR)) VAR=sy(VAR);
     if (strIsOmg(VAR)) error("pushvar(0)-->"+VAR);
-    if (strIsOmg(VAL)) error("pushvar(1)-->"+VAL);
+  //if (strIsOmg(VAL)) error("pushvar(1)-->"+VAL); // TODO: check all the case where we need, e.g. [!,a,b]
     if (STOP==omg(")")) {
       if (isString(VAR) && contains(VAR,".")) ADDA[VAR]=parseval(Undefined,VAL);
       else
@@ -195,7 +202,7 @@ function parsefList(L,I,STOP,CONT) {
   if (ELT!=Nil) VAR="$",pushvar(ELT);
   if (STOP!=omg(")") && STOP!="]" && FOUND) error("parsefList::STOP(1)");
   if ((STOP==omg(")") || STOP=="]") && !FOUND) error("parsefList::STOP(2)<"+STOP+">");
-  if (TYNAME=="type") RES.PARENT=type.getByName(RES.PARENT),RES=type(Nil,RES);
+  if (TYNAME=="type") RES.PARENT=type.getByName(RES.PARENT),RES=type(Nil,RES); // FIXME: quand on redefinit des types existants (tout specialement, des types comme obj()), il ne faut pas creer un nouveau type, mais fetcher le type de la memoire, et verifier qu'il a les bons attributs
   else
   if (TYPE!=obj && TYPE!=array) { // FIXME: still not good in this way, replaces the objects directly, while in fact the new object's content should be injected into the old object, to keep the pointers that point to it correct ; do all this in linkf() rather than creating directly in the container here
     RES=TYPE(RES);
@@ -254,13 +261,15 @@ function serializefBis(O,MODE,MODES) {
   function sfslot(N,SMODE) {
     if (isUndefined(SMODE)) SMODE={};
     if ((isAtom(O) && N=="$" || O.hasOwnProperty(N)) && !(N==sy("+o") && sfisHiddenId(O[N]))) {
+      var NAME=isSymbol(N)?sy(N):N;
+      if (contains(NAME,":")) return; // FIXME: Hack
       if (!SKIPSPC) {
         if (_SFLANG=="json" && !ISFIRST) sfout(",");
         if (isDefined(SMODE["nl"])) sfout("\n"+spc(_SFINDENT));
                                else if (_SFLANG=="lisp") sfout(" ");
       }
       SKIPSPC=False;
-      sfout(isSymbol(N)?sy(N):N),sfout(_SFLANG=="lisp"?"=":":");
+      sfout(NAME),sfout(_SFLANG=="lisp"?"=":":");
       if (N=="caller" || N=="callee" || N=="arguments") VAL="<Forbidden>";
       else
       if (isAtom(O) && N=="$") VAL=O.valueOf();

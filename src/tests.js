@@ -43,6 +43,8 @@ function test1() {
   var O=person({ "NAME":"Smith", "FNAME":"John", "AGE":43 });
   out(pretty(O,"short")),cr();
   out("---\n");
+  out(pretty({R1:{A:1,B:2},R2:{C:1,D:2}},"indent")),cr();
+  out("---\n");
   type(Nil,{ NAME:"range" });
   var O=parsef('range{+o:"id1",A:1,B:2,C,D,E,F:{}}{Z:1}'); //parsef("(range A=1 B=2 C D E F=())(Z=1)","lisp");
   out(pretty(O)),cr();

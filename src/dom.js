@@ -20,34 +20,20 @@
  */
 
 // Dom elements
-var ELEMENT_NODE=1,
-    ATTRIBUTE_NODE=2,
-    TEXT_NODE=3,
-    CDATA_SECTION_NODE=4,
-    ENTITY_REFERENCE_NODE=5,
-    ENTITY_NODE=6,
-    PROCESSING_INSTRUCTION_NODE=7,
-    COMMENT_NODE=8,
-    DOCUMENT_NODE=9,
-    DOCUMENT_TYPE_NODE=10,
-    DOCUMENT_FRAGMENT_NODE=11,
-    NOTATION_NODE=12;
-
 var ERRO;
 var SymbolFrom=sy("<="),
-    DomElement;
     dom=type(function (O) {
                var DOM;
-               if (isString(O)) DOM=document.createTextNode(O);
+               if (isString(O)) DOM=physdom("#text",O);
                else
-               if (isa0(O,DomElement)) {
+               if (isPhysDomElement(O)) {
                  DOM=O;
                  if (DOM[SymbolFrom]) return DOM[SymbolFrom];
                  ; // TODO: in that case, create dom() elements for all the subelements of DOM
                }
                else {
                  if (!isType(O) || !O.inherits(html)) ERRO=O,error("dom.cons");
-                 DOM=document.createElement(O.name()=="_input"?"input":O.name()/*FIXME: handle the case of JXML tags having the same name as HTML tags in a clean way*/);
+                 DOM=physdom(O.name()=="_input"?"input":O.name()/*FIXME: handle the case of JXML tags having the same name as HTML tags in a clean way*/);
                }
                var RES=dom.create();
                RES.DOM=DOM;
@@ -71,12 +57,12 @@ function isDomElement(O) {
 }
 
 setprop(dom,"getById",function (ID) {
-  var E=document.getElementById(ID);
+  var E=physdom.getById(ID);
   if (E) return dom(E);
   return Undefined;
 });
 setprop(dom,"getByName",function (NAME,ALL) {
-  var L=document.getElementsByTagName(NAME),RES=[];
+  var L=physdom.getByName(NAME),RES=[];
   for (var E of L) RES.push(dom(E)); // FIXME: is creating dom() objects for all, even if !ALL
   return ALL?RES:RES[0];
 });
@@ -148,7 +134,8 @@ setprop(dom,"event",function (EVT) {
   EVT2.CTRL=_CTRL;
   EVT2.ALT=_ALT;
   if (EVT3!=Nil) return EVT3;
-  if (EVT2.TAG=="keyup" || EVT2.TAG=="keydown" && keyboardIsChar(EVT2.KEY)) return Nil;
+  if (EVT2.TAG=="keyup"
+   || EVT2.TAG=="keydown" && (keyboardIsChar(EVT2.KEY) || EVT2.KEY==KeyReturn/*FIXME: hack ; it's because return returns two events, just like normal keys ; nevertheless, you don't want it to be a normal char*/)) return Nil;
   if (EVT2.TAG=="keydown") EVT2.TAG="keypress";
   return EVT2;
 });
@@ -177,7 +164,6 @@ setprop(dom,"propagate",function (EVT) {
 // Init
 function domInit() {
   if (!SERVER) {
-    DomElement=prototype(prototype(prototype(prototype(document.createElement("div"))))).constructor; // TODO: check that this is robust
     document.addEventListener("keyup",dom.propagate,false);
     document.addEventListener("keydown",dom.propagate,false);
     document.addEventListener("keypress",dom.propagate,false);

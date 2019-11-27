@@ -1,7 +1,7 @@
 /*
  * tokenize.js
  *
- * Copyright (C) Henri Lesourd 2017, 2018.
+ * Copyright (C) Henri Lesourd 2017, 2018, 2019.
  *
  *  This file is part of JIX.
  *
@@ -107,7 +107,7 @@ function lexerLiColNext(RG) {
   }
   return [LI,COL];
 }
-var TOKOPS,TOKENIZECOMMENTS=True; // FIXME: improve management of TOKENIZECOMMENTS
+var TOKOPS,TOKENIZECOMMENTS=True,TOKENIZEPYCOMMENTS=False; // FIXME: improve management of TOKENIZECOMMENTS
 function lexerNext(RG) {
   var S=RG.OBJ;
   var i0,i=RG.MAX;
@@ -133,6 +133,13 @@ function lexerNext(RG) {
     }
     else
     if (TOKENIZECOMMENTS && i>=0 && i+1<length(S) && S[i]=='/' && S[i+1]=='/') {
+      i0=i;
+      i=lexerReadUntil(S,i+2,"\n",-1,False);
+      BEG=i0,END=i+(i>=length(S)?0:1);
+      NAT=TokenNatComment;
+    }
+    else
+    if (TOKENIZEPYCOMMENTS && i>=0 && i<length(S) && S[i]=='#') {
       i0=i;
       i=lexerReadUntil(S,i+2,"\n",-1,False);
       BEG=i0,END=i+(i>=length(S)?0:1);
@@ -185,6 +192,7 @@ function lexerNext(RG) {
   return NAT;
 }
 function lexerStart(TEXT) {
+//out("lexerStart "+licol(TEXT).FNAME),cr();
   errlicolSet(1,1,licol(TEXT).FNAME);
   var RG=range(TEXT,0,0,1,1);
   lexerNext(RG);
@@ -200,13 +208,13 @@ function tokenize(SRC,KEEP) {
     if (KEEP || RG.NAT!=TokenNatSpc && RG.NAT!=TokenNatComment) RES.push(licolSet(rangeValue(RG),RG.LI,RG.COL));
     lexerNext(RG);
   }
-  errlicolSet(-1,-1);
+  errlicolSet(-1,-1,Nil);
   return RES;
 }
 
 // Parser
 var PRIOR,POSTFIX,MULTI;
-function tokenizeStart(TOKSPEC) {
+function tokenizeStart(TOKSPEC,COMMENTS,PYCOMMENTS) {
   TOKOPS={};
   PRIOR={},POSTFIX={},MULTI={};
   var T=splitTrim(TOKSPEC," "),
@@ -224,6 +232,9 @@ function tokenizeStart(TOKSPEC) {
       POSTFIX[OP0]=POST;
     }
   }
+  TOKENIZECOMMENTS=True,TOKENIZEPYCOMMENTS=False;
+  if (isDefined(COMMENTS)) TOKENIZECOMMENTS=True;
+  if (isDefined(PYCOMMENTS)) TOKENIZEPYCOMMENTS=True;
 }
 
 // Init

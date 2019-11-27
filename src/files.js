@@ -1,7 +1,7 @@
 /*
  * files.js
  *
- * Copyright (C) Henri Lesourd 2017, 2018.
+ * Copyright (C) Henri Lesourd 2017, 2018, 2019.
  *
  *  This file is part of JIX.
  *
@@ -47,12 +47,18 @@ function fileIsDir(fname) {
   var stats=fs.fstatSync(fd);
   return stats.isDirectory();
 }
-function fileRead(fname,encoding/*FIXME: use this ; or remove it*/) {
+function fileStats(fname) {
+  if (!fileExists(fname)) return { mtime:new Date("1/1/80") };
+  var fd=fs.openSync(fname,"r");
+  return fs.fstatSync(fd);
+}
+function fileRead(fname,encoding/*FIXME: use this ; or remove it*/) { // TODO: verify that it does automatically converts line endings to a canonic form (i.e., "\n", whether line endings are UNIXy or MSDOSy)
   if (SERVER) {
     if (!fileExists(fname)) error("File not found: "+fname);
+    if (isUndefined(encoding)) encoding="utf8";
     var RES=fs.readFileSync(fname,"latin1"/*"ascii"*/);
-    RES=Buffer.from(RES,"latin1").toString("utf8");
-    return licolSet(RES,0,0,fname);
+    if (encoding=="utf8") RES=Buffer.from(RES,"latin1").toString("utf8");
+    return licolSet(RES,1,1,fname);
   }
   else return httpSend("GET","http://localhost:8080/"+fname); // FIXME: replace by a jix server call
 }
@@ -77,18 +83,19 @@ function fileExt(fname) {
   var a=fname.split(".");
   return length(a)>1?a[length(a)-1]:Undefined;
 }
-function fileWrite(fname,str) {
+function fileWrite(fname,str,encoding) { // TODO: if we want to have CRLF line endings, add "\r\n" at the end ; otherwise, "\n" (if there are no other discordant line endings) ; add a parm for this
   try {
-    fs.writeFileSync(fname,str,"latin1"); // FIXME: convert back from UTF8 to Latin1 (is this necessary ? Decide a standard way to do it)
+    if (isUndefined(encoding)) encoding="utf8";
+    fs.writeFileSync(fname,str,encoding); // FIXME: convert back from UTF8 to Latin1 (is this necessary ? Decide a standard way to do it)
   }
   catch (err) {
     error("Can't write file: "+fname);
   }
 }
-function fileCopy(SRC,DEST) {
+function fileCopy(SRC,DEST,ENC) {
   if (SRC==DEST) return;
-  var S=fileRead(SRC);
-  fileWrite(DEST,S);
+  var S=fileRead(SRC,ENC);
+  fileWrite(DEST,S,ENC);
 }
 function fileDelete(fname) {
   fs.unlinkSync(fname);
@@ -103,15 +110,20 @@ function dirCreate(fname) {
     error("Can't create directory: "+fname);
   }
 }
-function vfileCreate(fname,isDir,parent,val) {
-//console.log("Loading "+fname);
-  return {"fname":fname,"isDir":isDir,isModified:false,"val":val, "parent":parent};
+function vfileCreate(dir,fname,isDir,parent,val) {
+//console.log("Loading "+dir+"/"+fname);
+  var D=fileStats(dir+"/"+fname).mtime;
+  return {"dir":trim(replaceAll(dir,"//","/"),"/",false,true),"fname":fname,
+          "isDir":isDir,
+          "date":D,
+          "isModified":false,"val":val,
+          "parent":parent};
 }
 _READ={};
 function fileReadSet(ext,readFunc) {
   _READ[ext]=readFunc;
 }
-function dirRead(fname,mask,rec,alle) {
+function dirRead(fname,mask,rec,ldf) {
   function fileRead(fname) {
     var dir=path.dirname(fname)+"/";
     fname=path.basename(fname);
@@ -125,7 +137,8 @@ function dirRead(fname,mask,rec,alle) {
   }
   var predir=path.dirname(fname)+"/";
   fname=path.basename(fname);
-  var d=vfileCreate(fname,true,null,{});
+  if (isUndefined(mask)) mask="*";
+  var d=vfileCreate(predir,fname,true,null,{});
   var dir=fname;
   if (predir!="") dir=predir+"/"+fname;
   var a=fs.readdirSync(dir);
@@ -133,14 +146,20 @@ function dirRead(fname,mask,rec,alle) {
     var b=fileIsDir(dir+"/"+a[i]);
     if (b) {
       if (rec) {
-        d.val[a[i]]=dirRead(dir+"/"+a[i],mask,rec,alle);
+        d.val[a[i]]=dirRead(dir+"/"+a[i],mask,rec,ldf);
         d.val[a[i]].parent=d;
+      }
+      else
+      if (strMatch(a[i],mask)) {
+        d.val[a[i]]=vfileCreate(dir,a[i],b,d,{});
       }
     }
     else {
-      var matches=mask==undefined || endsWith(a[i],mask);
-      if (alle || matches) d.val[a[i]]=vfileCreate(a[i],b,d,null);
-      if (matches) d.val[a[i]].val=fileRead(dir+"/"+a[i]);
+      var matches=strMatch(a[i],mask);
+      if (matches) {
+        d.val[a[i]]=vfileCreate(dir,a[i],b,d,null);
+        if (ldf) d.val[a[i]].val=fileRead(dir+"/"+a[i]);
+      }
     }
   }
   return d;
@@ -155,6 +174,9 @@ function foreach_vfile(d,func) {
 }
 function fnameNormalize(fname) {
   return replaceAll(path.resolve(path.normalize(fname)),"\\","/");
+}
+function fnameIsAbsPath(fname) {
+  return isString(fname) && (fname[0]=="/" || fname[1]==":");
 }
 function vfilePathname(vf) {
   var a=[];
@@ -176,11 +198,28 @@ function isChildPath(p,parent) {
 function urlParse(U) {
   var RES;
   if (SERVER) RES=url.parse(U);
-         else RES=document.createElement('a'),RES.href=U;
+         else RES=physdom('a'),RES.href=U; // FIXME: due to the use of <a href ...>, urlParse() uses the current location of the page when one uses local URLs
   return RES;
 }
+function urlNormalize(U,BASE) {
+  U=trim(U);
+  if (isUndefined(BASE)) BASE="";
+  var I=strFind(U,"://")
+  if (I!=-1) {
+    var P=substring(U,0,I+3),U=substring(U,I+3,length(U));
+    return P+U; //replaceAll(path.normalize(U),"\\","/"); FIXME: find a way to have path.normalize() work on the client, too
+  }
+  else {
+    if (BASE!="" && BASE[length(BASE)-1]!="/" && U!="" && U[0]!="/") BASE+="/";
+    return BASE+U;
+  }
+}
+function urlSelf() {
+  if (SERVER) return Nil;
+         else return urlParse(trim(document.location.href,"/",false,true));
+}
 
-// Console output ; TODO: Improve this and make it generic
+// Console (output) ; TODO: Improve this and make it generic
 var ColorNone           ="0",
     ColorBright         ="1",
     ColorNoBright       ="22",
@@ -315,6 +354,24 @@ function crIndent() {
   outIndent();
 }
 
+// Console (input)
+function consoleInputMode(RAW) {
+  if (isUndefined(RAW)) RAW=False;
+  process.stdin.setRawMode(RAW);
+}
+
+function consoleMain(FUNC) {
+  process.stdin.on('data',FUNC);
+}
+function consoleRepeat(FUNC,ONCE) {
+  FUNC();
+  consoleMain(function (KEY) {
+    if (ONCE) process.exit(0);
+    FUNC();
+  });
+}
+
+// Console (init)
 function consoleInit() {
   ColorBlue=env("TERM")=="cygwin"?"37":"34"; // NOTE: Bug colors cygwin term ...
   ColorWhite=env("TERM")=="cygwin"?"34":"37";
@@ -335,25 +392,62 @@ function processCwd() {
 function chdir(PATH) {
   return process.chdir(PATH);
 }
-function spawn(EXE,PARM) {
+function spawn(EXE,PARM,ASYNC) {
   function from(S,KEEP) {
+    if (S==Nil) return "";
     return Buffer.from(S).toString();
   }
-  var RES=child_process.spawnSync(EXE,PARM);
-  if (from(RES.stderr).length>0) {
-    throw new Error(from(RES.stderr));
+  if (ASYNC) return child_process.spawn(EXE,PARM);
+  else {
+    var RES=child_process.spawnSync(EXE,PARM);
+    if (RES.stderr==Nil || from(RES.stderr).length>0) {
+      throw new Error(from(RES.stderr));
+    }
+    return from(RES.stdout);
   }
-  return from(RES.stdout).trim("\n");
+}
+
+// Python
+function scriptFind(CMD) {
+  if (!fnameIsAbsPath(CMD)) {
+    var PATH;
+    if (isDefined(project.cwp())) PATH=project.cwp().CONF.BIN;
+    if (isDefined(project.JIXPROJ)
+     && (isUndefined(PATH) || !fileExists(PATH+"/"+CMD))) PATH=project.JIXPROJ.CONF.BIN;
+    if (isDefined(PATH) && fileExists(PATH+"/"+CMD)) CMD=PATH+"/"+CMD;
+  }
+  if (!fnameIsAbsPath(CMD)) CMD=Nil;
+  return CMD;
+}
+function pythonExe() {
+  var PYTHON=env("PYTHON_HOME");
+  function ex(FP) {
+    return fileExists(FP+"/python") || fileExists(FP+"/python.exe");
+  }
+  if (!(isDefined(PYTHON) && ex(PYTHON))) {
+    PYTHON=env("PYTHON_PATH");
+    var L=splitTrim(PYTHON,";").map(fnameNormalize); // TODO: detect if we are running under UNIX, and in that case, use ":" to split
+    PYTHON=Undefined;
+    for (var DIR of L) if (ex(DIR)) { PYTHON=DIR;break; }
+  }
+  if (isDefined(PYTHON) && ex(PYTHON)) PYTHON+="/python";
+                                  else PYTHON=Undefined;
+  return PYTHON;
+}
+function python(CMD,PARMS) {
+  CMD=scriptFind(CMD);
+  if (!fnameIsAbsPath(CMD)) error("python::script "+CMD+" not found");
+  var PYTHON=pythonExe();
+  if (isUndefined(PYTHON)) error("python not found");
+  return spawn(PYTHON,[CMD].concat(PARMS));
 }
 
 // Init
 var fs,path,url,child_process;
-function filesInit() {
-  if (SERVER) {
-    fs=require('fs');
-    path=require('path');
-    url=require('url');
-    child_process=require('child_process');
-  }
-  consoleInit();
+if (SERVER) {
+  fs=require('fs');
+  path=require('path');
+  url=require('url');
+  child_process=require('child_process');
 }
+consoleInit();

@@ -42,6 +42,7 @@ var jix={
   out: out,
   outd: outd,
   cr: cr,
+  consoleRepeat: consoleRepeat,
   processCwd: processCwd,
   spawn: spawn,
   pretty: pretty,
@@ -51,13 +52,15 @@ var jix={
   conf: conf,
   test1: test1,
   tests: tests,
+  start: start,
   init: function() { // FIXME: there's no real justification for all these init functions. Trash them.
-    basicsInit();
-    filesInit();
     serversInit();
     containersInit();
-    confInit();
-    if (!SERVER) domInit();
+    confInit(Nil,True);
+    if (typeof JIXWEB!="undefined") {
+      physdomInit();
+      domInit();
+    }
   },
   exportAll: function() { // FIXME: create a function declare() that does origin.X=X
     origin.Undefined=Undefined;
@@ -65,48 +68,98 @@ var jix={
     origin.True=True;
     origin.False=False;
     origin.error=error;
+    origin.errorCatch=errorCatch;
     origin.type=type;
+    origin.obj=obj;
+    origin.setprop=setprop;
+    origin.isa=isa;
     origin.isUndefined=isUndefined;
+    origin.isNil=isNil;
     origin.isDefined=isDefined;
     origin.isBoolean=isBoolean;
     origin.isNumber=isNumber;
     origin.isString=isString;
+    origin.isArray=isArray;
+    origin.isType=isType;
+    origin.isAtom=isAtom;
+    origin.isObject=isObject;
     origin.substring=substring;
     origin.contains=contains;
+    origin.index=index;
     origin.trim=trim;
     origin.splitTrim=splitTrim;
+    origin.splice=splice;
     origin.parse=parse;
     origin.serialize=serialize;
     origin.length=length;
     origin.charIsLetter=charIsLetter;
     origin.charIsDigit10=charIsDigit10;
     origin.charsInit=charsInit;
+    origin.charnat=charnat;
     origin.charnatSet=charnatSet;
     origin.CharNatAlf=CharNatAlf;
     origin.CharNatOmg=CharNatOmg;
+    origin.CharNatQuote=CharNatQuote;
+    origin.charIs=charIs;
+    origin.charIsAlpha=charIsAlpha;
+    origin.charIsBlank=charIsBlank;
+    origin.strIsBlank=strIsBlank;
+    origin.startsWith=startsWith;
+    origin.endsWith=endsWith;
+    origin.strMatch=strMatch;
+    origin.replaceAll=replaceAll;
     origin.lcase=lcase;
+    origin.ucase=ucase;
     origin.mlstr=mlstr;
     origin.filePath=filePath;
     origin.fileName=fileName;
+    origin.fileName0=fileName0;
+    origin.fileExt=fileExt;
     origin.fileRead=fileRead;
     origin.fileWrite=fileWrite;
     origin.fileCopy=fileCopy;
+    origin.fileDelete=fileDelete;
+    origin.dirCreate=dirCreate;
     origin.dirRead=dirRead;
     origin.foreach_vfile=foreach_vfile;
+    origin.vfileCreate=vfileCreate;
     origin.urlParse=urlParse;
     origin.out=out;
     origin.outd=outd;
     origin.cr=cr;
+    origin.outIndentInc=outIndentInc;
+    origin.crIndent=crIndent;
+    origin.startOutS=startOutS;
+    origin.stopOutS=stopOutS;
+    origin.getOutS=getOutS;
+    origin.consoleMain=consoleMain;
+    origin.consoleRepeat=consoleRepeat;
     origin.fileExists=fileExists;
+    origin.fileIsDir=fileIsDir;
     origin.fnameNormalize=fnameNormalize;
     origin.processCwd=processCwd;
+    origin.child_process=child_process;
     origin.spawn=spawn;
     origin.chdir=chdir;
     origin.pretty=pretty;
     origin.conf=conf;
+    origin.confInit=confInit;
+    origin.project=project;
     origin.server=server;
     origin.container=container;
     origin.tokenizeStart=tokenizeStart;
     origin.tokenize=tokenize;
+    origin.format=format;
+    origin.load=load;
+    origin.save=save;
+    origin.txtsave=txtsave;
+    if (typeof JIXWEB!="undefined") {
+      origin.markup=markup;
+    }
+    origin.csvparsef=csvparsef;
+    origin.csvserializef=csvserializef;
+    origin.csvh=csvh;
+    origin.csv=csv;
+    origin.start=start;
   }
 };

@@ -1,7 +1,7 @@
 /*
  * basics.js
  *
- * Copyright (C) Henri Lesourd 2017, 2018.
+ * Copyright (C) Henri Lesourd 2017, 2018, 2019.
  *
  *  This file is part of JIX.
  *
@@ -27,14 +27,19 @@ var True=true,
     False=false;
 
 // Error
-var SERVER=(typeof window)=="undefined";
-function stop(errno) {
-  if (SERVER) process.exit(errno); else nofunc();
+var SERVER=(typeof window)=="undefined",
+    ERRCATCH=False;
+function errorCatch(CATCH) {
+  ERRCATCH=CATCH;
+}
+function errstop(errno) {
+  if (ERRCATCH) throw "";
+           else if (SERVER) process.exit(errno); else nofunc();
 }
 var ERRLI=-1,ERRCOL=-1,ERRFNAME=Nil;
 function errlicolSet(LI,COL,FNAME) {
-  if (LI>0) ERRLI=LI;
-  if (COL>0) ERRCOL=COL;
+  ERRLI=LI>0?LI:-1;
+  ERRCOL=COL>0?COL:-1;
   if (isDefined(FNAME)) ERRFNAME=FNAME;
 }
 function error(msg) {
@@ -47,7 +52,7 @@ function error(msg) {
   }
   if (ERRLI>0 || ERRCOL>0) msg+=")";
   (SERVER?console.log:alert)(msg);
-  stop(1);
+  errstop(1);
 }
 
 // JS types (1)
@@ -77,9 +82,10 @@ function isBoolean(O) { return isa0(O,Boolean); }
 function isNumber(O) { return isa0(O,Number); }
 function isString(O) { return isa0(O,String); }
 function isNumStr(O) { return isNumber(O) || strIsNum(O); }
+function isDate(O) { return isa0(O,Date); }
 function isAtom(O) { return isNil(O)
                           || isSymbol(O) || isBoolean(O)
-                          || isNumber(O) || isString(O); }
+                          || isNumber(O) || isString(O) || isDate(O); }
 function isRootAtom(O) { return typeOf(O).root()==typeOf(O) && isAtom(O); }
 function isArray(O) { return isa0(O,Array); }
 function isFunction(O) { return isa0(O,Function); }
@@ -169,6 +175,7 @@ function strIsBlank(S) {
 function charsInit() {
   var i;
   for (i=0;i<256;i++) CharNat[i]=CharNatNone;
+  for (i=0;i<10;i++) CharNat[i]=CharNatAlf; // To enable, e.g. attribute names with these characters to be parsed
   for (i=32;i<=126;i++) CharNat[i]=CharNatOmg;
   for (i=asc('A');i<=asc('Z');i++) CharNat[i]=CharNatAlf;
   for (i=asc('a');i<=asc('z');i++) CharNat[i]=CharNatAlf;
@@ -186,7 +193,7 @@ function charsInit() {
 
 // Strings
 function trim(s,chars,left,right) {
-  if (chars==undefined) chars=" ";
+  if (chars==undefined) chars=" \r\n";
   if (left==undefined) left=true;
   if (right==undefined) right=true;
   var res="",a=s.split(""),i;
@@ -204,7 +211,7 @@ function trim(s,chars,left,right) {
       i--;
     }
   }
-  for (i=0;i<a.length;i++) if (a[i]!=null) res+=a[i];
+  for (i=0;i<a.length;i++) if (a[i]!=null) res+=a[i]; // TODO: in case there is nothing to trim, return S itself
   return res;
 }
 function startsWith(s,i,pref) {
@@ -226,6 +233,10 @@ function strFind(s,ss) {
   return -1;
 }
 function strMatch(S,PATTERN) {
+  if (isArray(PATTERN)) {
+    for (P of PATTERN) if (strMatch(S,P)) return True;
+    return False;
+  }
   var A=PATTERN.split("*");
   if (length(A)==1) return S==PATTERN;
   if (length(A)==2) {
@@ -245,7 +256,7 @@ function substring(S,I0,I1) {
   return S.substring(I0,I1);
 }
 function splitTrim(s,chars) {
-  var a=s.split(chars);
+  var a=s==""?[]:s.split(chars);
   for (var i=0;i<a.length;i++) a[i]=trim(a[i]," \r\n",true,true);
   return a;
 }
@@ -420,7 +431,7 @@ function display(o) { // Similar to JSON.stringify()
     res="{";
     var first=true;
     for (var val in o) {
-      if (!first) res+="|"; else first=false;
+      if (!first) { if (val!="parent") res+="|"; } else first=false;
       if (val!="parent") {
         res+=val+"="+display(o[val]);
       }
@@ -437,6 +448,4 @@ if (SERVER) origin=global;
        else origin=window;
 
 // Init
-function basicsInit() {
-  charsInit();
-}
+charsInit();

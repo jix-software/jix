@@ -176,6 +176,8 @@ container.setMethod("newId",function () {
 });
 container.setMethod("store",function (O,ID,UP,UPNAME) {
   if (isUndefined(ID)) ID=this.newId();
+  else
+  if (isNumStr(ID)) this.LASTID=num(ID)+1; // FIXME: hack ; improve this
   O.setId(ID);
   O.setUp(UP,UPNAME);
   O.setContainerOf(this);
@@ -373,7 +375,7 @@ query.setMethod("match",function (O,Q) {
   if (isAtom(O)) {
     if (!isString(O)) O=str(O);
     if (!isString(Q)) error("query.match::str");
-    return strMatch(O,Q);
+    return strMatch(O,Q[0]=="'"?substring(Q,1,length(Q)-1)/*FIXME: hack*/:Q);
   }
   if (!isObject(O)) return False;
   var RES=True;
@@ -404,6 +406,13 @@ container.setMethod("query",function (VARS,QUERY,FETCH) {
   if (FETCH && isRemote(this.SRV)) {
     var S=this.SRV.call("_grep",[this.NAME,QUERY.QUERY]);
     return parse(S,this);
+  }
+  else
+  if (typeOf(QUERY.QUERY)==array && QUERY.QUERY[0]=="!") {
+    var TYPE=QUERY.QUERY[1],O=QUERY.QUERY[2];
+    TYPE=type.getByName(TYPE);
+    if (!isType(TYPE)) return [];
+    return [TYPE(O,this)];
   }
   else {
     var L=[];

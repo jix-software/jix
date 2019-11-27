@@ -232,6 +232,9 @@ obj.setMethod("super",function (NAME,...PARMS) {
   if (isNil(M)) error("super::method "+NAME+" doesn't exists in class "+typeOf(this).parent().name());
   return M.apply(this,PARMS);
 });
+obj.setMethod("call",function (METHOD,...PARMS) {
+  return METHOD.apply(this,PARMS);
+});
 
 // JS types (2)
 var nil=type(function (VAL) {
@@ -382,7 +385,7 @@ function isQualif(O) {
 }
 
 var addr=type(function (NAME,TYPE,QUALIF,VAL0) {
-                if (isUndefined(TYPE)) return addr.obj(NAME);
+                if (isUndefined(TYPE) && isUndefined(QUALIF)) return addr.obj(NAME);
                 else {
                   var RES=addr.create();
                   RES.init(NAME,TYPE,QUALIF,VAL0);

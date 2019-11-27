@@ -30,36 +30,47 @@ function isApi(O) {
 
 // Servers
 var server=type(function (PORT,API) {
-                  var RES=server.create();
-                  RES.IDSRV=server.LASTIDSRV++;
-                  server.SRV.push(RES);
+                  function create(CATEG) {
+                    var RES=server.create();
+                    RES.IDSRV=server.LASTIDSRV++;
+                    RES.CATEG=CATEG;
+                    server.SRV.push(RES);
+                    return RES;
+                  }
+                  var RES;
                   if (isNumber(PORT)) {
-                    RES.CATEG="l"; // Local
-                    if (isUndefined(API) || typeOf(API)==obj) API=api(API);
-                    if (!isApi(API)) error("server.cons(1)");
-                    RES.ADDR="0.0.0.0";
-                    RES.PORT=PORT;
-                    RES.API=API;
-                    setPrototypeOf(API,APIDefault); // FIXME: not super nice way of inheriting APIs
-                                                    // TODO: implement virtual servers
+                    RES=server.getBy("PORT",PORT);
+                    if (RES==Nil) {
+                      RES=create("l"); // Local
+                      if (isUndefined(API) || typeOf(API)==obj) API=api(API);
+                      if (!isApi(API)) error("server.cons(1)");
+                      RES.ADDR="0.0.0.0";
+                      RES.PORT=PORT;
+                      RES.API=API;
+                      setPrototypeOf(API,APIDefault); // FIXME: not super nice way of inheriting APIs
+                                                      // TODO: implement virtual servers
+                    }
                   }
                   else
                   if (PORT=="c") {
                     if (!isNumber(API)) error("server.cons(2)");
-                    RES.CATEG="c"; // Client
+                    RES=create("c"); // Client
                     RES.IDSRVPARENT=API;
                   }
                   else {
-                    var URL=PORT;
+                    var URL=server.urlNormalize(PORT);
                     if (!isString(URL) || !isUndefined(API)) error("server.cons(3)");
-                    RES.CATEG="r"; // Remote
-                  //if (URL.substring(0,7)!="http://") URL="http://"+URL;
-                    var URL0=urlParse(URL);
-                    RES.HREF=URL;
-                    RES.ADDR=URL0.hostname;
-                    RES.PORT=JSON.parse(URL0.port==""?"80":URL0.port);
-                    var CLI=RES.call("_connect",[]);
-                    RES.IDCLI=CLI.IDSRV;
+                    RES=server.getBy("HREF",URL);
+                    if (RES==Nil) {
+                      RES=create("r"); // Remote
+                      var URL0=urlParse(URL);
+                      RES.HREF=URL;
+                      RES.ADDR=URL0.hostname;
+                      RES.PORT=JSON.parse(URL0.port==""?"80":URL0.port);
+                      var CLI=RES.call("_connect",[]); // TODO: have one more parameter, in case we want to pass an IDCLI that enables to fetch an existing client, rather than creating a new one.
+                      RES.IDCLI=CLI.IDSRV;
+                      confExec(CLI.CONF); // FIXME: do it only in case URL==APP_URL (and use it also in the future, in a more local way, when this local way will have been defined)
+                    }
                   }
                   return RES;
                 },
@@ -75,6 +86,11 @@ server.LASTIDSRV=0; // FIXME: implement classes that remember their instances, a
 
 setprop(server,"getById",function (ID) {
   return server.SRV[ID];
+});
+setprop(server,"getBy",function (NAME,VAL) {
+  var RES=Nil;
+  for (var I in server.SRV) if (server.SRV[I][NAME]==VAL) RES=server.SRV[I];
+  return RES;
 });
 
 function isServer(O) {
@@ -103,13 +119,31 @@ setprop(server,"find",function (ADDR,PORT,IDCLI) {
   return RES;
 });
 
+// urlNormalize
+setprop(server,"urlApp",function () {
+  return server.APP_URL;
+});
+setprop(server,"urlWeb",function () {
+  return server.WEB_URL;
+});
+setprop(server,"urlNormalize",function (U) {
+  return urlNormalize(U,server.urlApp());
+});
+
 // Connect/close
-function _connect() {
-  if (isNil(server.currentServer())) error("_connect");
-  var RES=server("c",server.currentServer().IDSRV);
-  RES.ADDR=_REQLOG.ADDR.address;
-  RES.PORT=_REQLOG.ADDR.port;
-  return { "IDSRV":RES.IDSRV };
+function _connect(IDSRV) {
+  var RES;
+  if (isDefined(IDSRV)) {
+    RES=server.getById(IDSRV);
+    if (isUndefined(RES)) error("_connect(1)");
+  }
+  else {
+    if (isNil(server.currentServer())) error("_connect(2)");
+    RES=server("c",server.currentServer().IDSRV);
+    RES.ADDR=_REQLOG.ADDR.address;
+    RES.PORT=_REQLOG.ADDR.port;
+  }
+  return { "IDSRV":RES.IDSRV, "CONF":conf(1) };
 }
 
 server.setMethod("close",function () {
@@ -233,7 +267,7 @@ server.setMethod("start",function () {
     function ret(ERR,CTYPE,MSG,RES,BIN) {
       if (CTYPE=="application/json") RES=isUndefined(RES)?"null"/*FIXME: clean this*/:JSON.stringify(RES);
       var SRES=RES;
-      if (!BIN && length(SRES)>80) SRES=substring(RES,0,80)+" ...";
+      if (!BIN && length(SRES)>80 && !conf().LOG_FULLANSW) SRES=substring(RES,0,80)+" ...";
       log(REQNO++,REQLOG,MSG,ERR,SRES);
       ANSW.writeHead(ERR, {'Content-Type': CTYPE,
                            'Access-Control-Allow-Origin': '*' // Available to all
@@ -246,7 +280,8 @@ server.setMethod("start",function () {
       }
       _REQLOG=_CURSRV=Nil;
     }
-    if (endsWith(REQLOG.PATHNAME,".jix")) { // FIXME: extension should rather be ".srv"
+    if (REQLOG.PATHNAME=="/" && REQ.method=="GET") REQLOG.PATHNAME="/index.html";
+    if (!contains(REQLOG.PATHNAME,".")) { // TODO: implement routes
       if (REQ.method=="POST") {
         var MSG="",ISOBJ=false;
         REQ.on('data', function (DATA) {
@@ -279,7 +314,7 @@ server.setMethod("start",function () {
       }
       var BIN=False;
       if (endsWith(REQLOG.PATHNAME,".jpg")) BIN=True;
-      rd(__dirname+'/'+REQLOG.PATHNAME,BIN,function(ERR,DATA) {
+      rd(conf().WEB+'/'+REQLOG.PATHNAME,BIN,function(ERR,DATA) {
         ; // FIXME: if the pathname is void, set pathname=index.html
         if (ERR) {
           ret(404,"text/html","",'<h1>Page Not Found</h1>');
@@ -411,5 +446,20 @@ function serversInit() {
                  "_grep": _grep,
                  "_syncobjs": _syncobjs
                };
+  }
+  else {
+    var U=urlSelf();
+    if (U.protocol=="file:") U=urlParse("http://localhost");
+    var PATH=U.pathname,A=splitTrim(PATH,"/"),I=length(A)-1,HASWEB=False;
+    if (endsWith(A[I],".html")) {
+      I--;
+      if (I>=0 && A[I]=="web") HASWEB=True,I--;
+      var S="";
+      for (var J=1;J<=I;J++) S+="/"+A[J];
+      PATH=S;
+    }
+    U=urlParse(U.origin+PATH);
+    server.APP_URL=U.href;
+    server.WEB_URL=U.href+(HASWEB?"web":"");
   }
 }

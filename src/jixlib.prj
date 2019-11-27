@@ -19,19 +19,24 @@
  *  along with JIX.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-include "basics.js";
-include "files.js";
-include "objects.js";
-include "multilingual.js";
-include "tokenize.js";
-include "pretty.js";
-include "serializef.js";
-include "servers.js";
-include "csvf.js";
-include "containers.js";
-include "conf.js";
-include "tests.js";
-include "init.js";
+library jixlib;
+
+import basics;
+import files;
+import objects;
+import multilingual;
+import tokenize;
+import formats;
+import pretty;
+import serializef;
+import servers;
+import csvf;
+import containers;
+import conf;
+import projects;
+import tests;
+import app;
+import init;
 
 module.exports=jix;
 

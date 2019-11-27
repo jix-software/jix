@@ -31,7 +31,7 @@ var widget=type(function (O) {
 
 widget.$=container();
 setprop(widget,"getById",function (ID) {
-  return widget.$.getbyId[ID];
+  return widget.$.getById(ID);
 });
 
 setprop(widget,"create0",widget.create);
@@ -86,10 +86,10 @@ htmla.setMethod("setv",function (I,VAL) { // FIXME: in string VALs, translate HT
   if (isUndefined(UP)) error("htmla.setv(2)");
   if (isDomElement(UP.TO)) {
     var DOM=UP.TO.DOM;
-  //if (I==DOM.childNodes.length) DOM.appendChild(document.createTextNode("")); Can this be of any use ?
-    if (I<0 || I>=DOM.childNodes.length/*TODO: verify that length(DOM.childNodes) always works*/) error("htmla.setv(3)");
+  //if (I==DOM.childNodes.length) DOM.appendChild(physdom("#text","")); Can this be of any use ?
+    if (I<0 || I>=DOM.childNodes.length/*TODO: verify that length(DOM.childNodes) always works*/) if (!SERVER/*FIXME: remove this if (!SERVER) asap*/) error("htmla.setv(3)");
     if (isString(VAL)) {
-      DOM.replaceChild(document.createTextNode(VAL),DOM.childNodes[I]);
+      DOM.replaceChild(physdom("#text",VAL),DOM.childNodes[I]);
     }
     else
     if (isDom(VAL.TO)) {
@@ -100,7 +100,8 @@ htmla.setMethod("setv",function (I,VAL) { // FIXME: in string VALs, translate HT
 
 htmla.setMethod("push",function (VAL) {
   if (isNumber(VAL)) VAL=VAL.toString();
-  if (!isHtml(VAL) && !isString(VAL)) error("htmla.push");
+  if (isNil(VAL)/*FIXME: hack ; decide what to do in this case*/) VAL="{{Undefined}}";
+  if (!isHtml(VAL) && !isString(VAL)) error("htmla.push"+pretty(VAL));
   this.super("push",VAL);
   return VAL;
 });
@@ -123,10 +124,10 @@ htmla.setMethod("insert",function (I,...VAL) {
   if (isUndefined(UP)) error("htmla.insert(1)");
   if (isDomElement(UP.TO)) {
     var DOM=UP.TO.DOM;
-    if (I<0 || I>DOM.childNodes.length/*TODO: verify that length(DOM.childNodes) always works*/) error("htmla.insert(2)");
+    if (I<0 || I>DOM.childNodes.length/*TODO: verify that length(DOM.childNodes) always works*/) if (!SERVER/*FIXME: remove this if (!SERVER) asap*/) error("htmla.insert(2)");
     var N=length(VAL);
     while (N--) {
-      DOM.insertBefore(document.createTextNode(""),DOM.childNodes[I]);
+      DOM.insertBefore(physdom("#text",""),DOM.childNodes[I]);
     }
   }
   this.super("insert",I,...VAL);
@@ -165,7 +166,13 @@ html.setMethod("init",function (O) {
     if (N=="$") for (var N2 in O.$) {
       var W=O.$[N2];
       if (isJxmlPure(W)) W=W.TO;
-      if (isDefined(W)/*TODO: check that this is enough*/) this.$.push(W);
+      if (isDefined(W)/*TODO: check that this is enough*/) {
+        this.$.push(W);
+        if (this.TAG=="tr" && length(this.$)>0 && this.$[0].TAG=="table") {
+          this.$[0]._NOCELL=1; /*FIXME: _NOCELL is a hack (1)*/
+          ERRO=this;
+        }
+      }
     }
     else
     if (N=="events") this[N]=html.parseLEvent(VAL); // Extended HTML-specific slots
@@ -230,10 +237,10 @@ function htmlType(NAME) {
 
 for (var N of [
        "body",
-       "i","u","b",
-       "span", "div", "br","hr","img",
+       "i","u","b","h1",
+       "span", "div", "br","hr","img","iframe",
        "table", "tr", "td",
-       "_input"
+       "_input","a"
      ]
     )
     htmlType(N);
@@ -289,7 +296,9 @@ setprop(html,"evalTarget",function (TARGET,EXPR) {
 setprop(html,"defaultParm",function (ACTION) {
   switch (ACTION) {
     case "load": return "^"; // TODO: replace "^" by "$.obj", or ".obj"
+    case "add": return "^";
     case "mode": return "^";
+    case "alert": return "^";
     case "save": return "";
     case "focus": return "_^"; // Hmm ...
     default: return "_^"; // E.g. focus() ; en fait, focus() ne prend aucun parametre, c'est moveTo(), le focus qui permet de deplacer le curseur a l'interieur d'un element, et focus() l'action qui permet de lui transmettre le jeton. Eventuellement, O.focus(TARGET) est en fait <=> a O.moveTo(TARGET),O.focus() <=> O.moveTo(TARGET)&focus()
@@ -303,7 +312,7 @@ setprop(html,"evalParm",function (ACTION,PARM,THIS,TARGET) {
   switch (PARM) {
     case "$": return THIS;
     case "*": return THIS.collect()/*FIXME: hmm, see how we can disambiguate collect()s stemming from forms, and collect()s stemming from an edit view*/;
-    case "^": return TARGET.OBJ;
+    case "^": return TARGET.OBJ; // FIXME: return the actual value slot of a widget, and if there's no value, its $ (and perhaps if length($)==1, return $[0])
     case "_^": return TARGET;
     case "": return Nil;
     default: return PARM; //error("html.evalParm");

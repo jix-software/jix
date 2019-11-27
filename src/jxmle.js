@@ -26,7 +26,7 @@ function jxmleTokenize(S) { // FIXME: use tokenize()
       I++;
       if (TOK!="") L.push(TOK);
       TOK="$";
-      while (I<length(S) && (charIsLetter(S[I]) || charIsDigit10(S[I]))) TOK+=S[I],I++;
+      while (I<length(S) && (charIsLetter(S[I]) || charIsDigit10(S[I])) || S[I]=='_') TOK+=S[I],I++;
       L.push(TOK);
       TOK="";
       if (I<length(S)) I--;
@@ -47,8 +47,9 @@ function jxmleEval(CTX,S) {
   function ev(O,VAR) {
     if (INJS) return serialize(O);
     else {
+      if (O==Nil) return ""; // TODO: check if we want that null objects are evaluated at "" in strings
       if (isNumber(O)) return serialize(O);
-      if (isString(O)) return O;
+      if (isString(O) || isArray(O)/*FIXME: doesn't always work*/) return O;
       if (isBoolean(O)) return O?"1":"0";
       if (isDefined(VAR)) return VAR;
       error("jxmlEval.ev(!INJS)<<"+S+">>-->"+serialize(O)); // FIXME: add a way to embed pointers to full-blown objects without having to serialize them ; and unify completely the jxmle kind of eval with the eval of the event language
@@ -69,15 +70,41 @@ function jxmleEval(CTX,S) {
   for (var I=0;I<length(L);I++) {
     if (L[I]=="{") {
       I++;
-      var ES="";
-      while (I<length(L) && L[I]!="}") {
+      var ES="",LEV=1,I0=I;
+      while (I<length(L) && !(LEV==1 && L[I]=="}")) {
         ES+=L[I];
+        if (L[I]=="{") LEV++;
+        if (L[I]=="}") LEV--;
         I++;
       }
       if (L[I]!="}") error("jxmleEval(1)");
-      RES+=ev(eval(ES));
+      if (LEV<1) error("jxmleEval(2)");
+      var VAL=ev(eval(ES));
+      if (I0==1 && I+1==length(L)) RES=VAL;
+                              else RES+=VAL;
     }
     else RES+=L[I];
   }
+  return RES;
+}
+
+function jxmleCollectJSNext(L,I) {
+  if (L[I]!="{") error("jxmleCollectJS(1)");
+  I++;
+  var LEV=0;
+  while (I<length(L)) {
+    if (LEV==0 && L[I]=="}") break;
+    if (L[I]=="{") LEV++;
+    if (L[I]=="}") LEV--;
+    I++;
+  }
+  if (L[I]!="}") error("jxmleCollectJS(2)");
+  if (LEV<0) error("jxmleCollectJS(3)");
+  return I;
+}
+
+function jxmleCollectJS(L,I0,I1) {
+  var RES="";
+  for (var I=I0; I<I1; I++) RES+=L[I];
   return RES;
 }

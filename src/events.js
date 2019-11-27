@@ -1,7 +1,7 @@
 /*
  * events.js
  *
- * Copyright (C) 2014  Henri Lesourd
+ * Copyright (C) 2014, 2019  Henri Lesourd
  *
  *  This file is part of JIX.
  *
@@ -30,6 +30,7 @@ var _LASTEVENT=null;
 
 // Keyboard
 var KeyReturn=0x1000+13,
+    KeyEscape=0x1000+27,
     KeyLeft  =0x1000+37, // FIXME: with these values, ASCII[0|1][Key%0x1000] bumps into valid ascii chars
     KeyRight =0x1000+39,
     KeyDown  =0x1000+40,
@@ -42,6 +43,7 @@ for (var I=0;I<=255;I++) ASCII[0][I]=ASCII[1][I]=null;
 for (var I=65;I<=91;I++) ASCII[0][I]=I+32; // Non shifted
 for (var I=65;I<=91;I++) ASCII[1][I]=I;    // Shifted
 ASCII[0][KeyReturn%0x1000]=ASCII[1][KeyReturn%0x1000]=KeyReturn;
+ASCII[0][KeyEscape%0x1000]=ASCII[1][KeyEscape%0x1000]=KeyEscape;
 ASCII[0][KeyLeft%0x1000]=ASCII[1][KeyLeft%0x1000]=KeyLeft;
 ASCII[0][KeyRight%0x1000]=ASCII[1][KeyRight%0x1000]=KeyRight;
 ASCII[0][KeyDown%0x1000]=ASCII[1][KeyDown%0x1000]=KeyDown;
@@ -70,6 +72,7 @@ function keyToStr(KEY) {
   if (keyboardIsChar(KEY)) return chr(KEY);
   switch (KEY) {
     case KeyReturn: return "return";
+    case KeyEscape: return "escape";
     case KeyLeft: return "left";
     case KeyRight: return "right";
     case KeyDown: return "down";
@@ -87,6 +90,7 @@ function strToKey(S) {
     return KEY;
   }
   if (S=="return") return KeyReturn;
+  if (S=="escape") return KeyEscape;
   if (S=="left") return KeyLeft;
   if (S=="right") return KeyRight;
   if (S=="down") return KeyDown;
