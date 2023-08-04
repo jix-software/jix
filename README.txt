@@ -2,7 +2,7 @@
    
    Why not try to keep it simple ?
    
-     Copyright (C) Henri Lesourd  2018, 2019.
+     Copyright (C) Henri Lesourd  2018, 2019, 2023.
 
 
 JIX (aka. Javascript, Interactive, and eXtensible) is a Javascript toolkit
